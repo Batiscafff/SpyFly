@@ -163,6 +163,56 @@
           </button>
 
           <div id="hashResults" class="mt-4" style="display:none;"></div>
+
+          <!-- ── Batch file upload ────────────────────────── -->
+          <div class="mt-4 pt-4" style="border-top:1px solid var(--sf-border);">
+            <div class="sf-section-label mb-3">Batch check from file</div>
+            <input type="file" id="hashFileInput" accept=".txt,.csv,.log,.hash" style="display:none;">
+            <div id="hashDropZone" class="hash-drop-zone">
+              <i class="bi bi-file-earmark-text" style="font-size:1.8rem;color:var(--sf-muted);"></i>
+              <div class="mt-2" style="font-size:.85rem;">
+                Drop a file or <span style="color:var(--sf-accent);">browse</span>
+              </div>
+              <div class="sf-muted mt-1" style="font-size:.73rem;">One hash per line · MD5 / SHA-1 / SHA-256</div>
+            </div>
+
+            <div id="hashFileInfo" class="mt-3 d-flex align-items-center gap-3 flex-wrap" style="display:none!important;">
+              <div style="font-size:.85rem;">
+                <i class="bi bi-file-check me-1" style="color:var(--sf-accent2);"></i>
+                <span id="hashFileCount"></span>
+              </div>
+              <button id="btnCheckAll" class="btn btn-sf-primary btn-sm">
+                <i class="bi bi-play-fill me-1"></i>Check All
+              </button>
+              <button id="btnClearFile" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x me-1"></i>Clear
+              </button>
+            </div>
+
+            <div id="hashBatchProgress" class="mt-3" style="display:none;">
+              <div class="sf-progress mb-1">
+                <div id="hashBatchBar" class="sf-progress-bar" style="width:0%;transition:width 0.3s;"></div>
+              </div>
+              <small id="hashBatchStatus" class="sf-muted"></small>
+            </div>
+
+            <div id="hashBatchResults" class="mt-3" style="display:none;">
+              <div style="overflow-x:auto;">
+                <table class="sf-table">
+                  <thead>
+                    <tr>
+                      <th style="width:2rem;">#</th>
+                      <th>Hash</th>
+                      <th>Algo</th>
+                      <th>Verdict</th>
+                      <th>Name</th>
+                    </tr>
+                  </thead>
+                  <tbody id="hashBatchBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -335,6 +385,154 @@
     if (selectAll) selectAll.checked = false;
     syncToolbar();
   });
+
+// ── Hash batch file checker ───────────────────────────────────────────────────
+(function () {
+  const dropZone   = document.getElementById('hashDropZone');
+  const fileInput  = document.getElementById('hashFileInput');
+  const fileInfoEl = document.getElementById('hashFileInfo');
+  const countEl    = document.getElementById('hashFileCount');
+  const btnAll     = document.getElementById('btnCheckAll');
+  const btnClear   = document.getElementById('btnClearFile');
+  const progressEl = document.getElementById('hashBatchProgress');
+  const bar        = document.getElementById('hashBatchBar');
+  const statusEl   = document.getElementById('hashBatchStatus');
+  const resultsEl  = document.getElementById('hashBatchResults');
+  const tbody      = document.getElementById('hashBatchBody');
+  if (!dropZone) return;
+
+  const ALGO = { 32: 'MD5', 40: 'SHA-1', 64: 'SHA-256' };
+  let hashes = [];
+  let running = false;
+  let stopFlag = false;
+
+  function parseText(text) {
+    const out = [];
+    for (const line of text.split(/\r?\n/)) {
+      const token = line.trim().split(/[\s,;]+/)[0];
+      if (!token) continue;
+      const algo = ALGO[token.length];
+      if (algo && /^[0-9a-fA-F]+$/i.test(token))
+        out.push({ hash: token.toLowerCase(), algo });
+    }
+    return out;
+  }
+
+  function showFileInfo() {
+    const counts = {};
+    hashes.forEach(({ algo }) => { counts[algo] = (counts[algo] || 0) + 1; });
+    const summary = Object.entries(counts).map(([a, n]) => `${n} ${a}`).join(' · ');
+    countEl.textContent = `${hashes.length} hash${hashes.length !== 1 ? 'es' : ''} — ${summary}`;
+    fileInfoEl.style.display = 'flex';
+    resultsEl.style.display = 'none';
+    progressEl.style.display = 'none';
+    tbody.innerHTML = '';
+  }
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      hashes = parseText(e.target.result);
+      if (!hashes.length) {
+        countEl.textContent = 'No valid hashes found in this file';
+        fileInfoEl.style.display = 'flex';
+        btnAll.style.display = 'none';
+        return;
+      }
+      btnAll.style.display = '';
+      showFileInfo();
+    };
+    reader.readAsText(file);
+  }
+
+  dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', ()  => { dropZone.classList.remove('drag-over'); });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+  btnClear.addEventListener('click', () => {
+    stopFlag = true;
+    hashes = [];
+    fileInput.value = '';
+    fileInfoEl.style.display = 'none';
+    progressEl.style.display = 'none';
+    resultsEl.style.display = 'none';
+    tbody.innerHTML = '';
+  });
+
+  btnAll.addEventListener('click', async () => {
+    if (running || !hashes.length) return;
+    running = true; stopFlag = false;
+    btnAll.disabled = true;
+    btnAll.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Checking…';
+
+    const dry = document.getElementById('hashDryRun').checked ? '1' : '0';
+
+    tbody.innerHTML = hashes.map((h, i) => `
+      <tr id="bRow${i}">
+        <td class="sf-muted" style="font-size:.75rem;">${i + 1}</td>
+        <td><code style="font-size:.7rem;word-break:break-all;">${h.hash.slice(0, 12)}…</code></td>
+        <td class="sf-muted" style="font-size:.75rem;">${h.algo}</td>
+        <td id="bVerdict${i}" class="sf-muted" style="font-size:.8rem;">pending</td>
+        <td id="bName${i}"    class="sf-muted" style="font-size:.75rem;">—</td>
+      </tr>`).join('');
+    resultsEl.style.display = '';
+    progressEl.style.display = '';
+
+    for (let i = 0; i < hashes.length; i++) {
+      if (stopFlag) break;
+      bar.style.width = `${(i / hashes.length * 100).toFixed(0)}%`;
+      statusEl.textContent = `Checking ${i + 1} / ${hashes.length}…`;
+      document.getElementById(`bVerdict${i}`).textContent = '…';
+
+      let data;
+      try {
+        const resp = await fetch(`/api/hash?hash=${encodeURIComponent(hashes[i].hash)}&dry_run=${dry}`);
+        data = await resp.json();
+      } catch (e) {
+        data = { error: 'Network error' };
+      }
+
+      const verdictEl = document.getElementById(`bVerdict${i}`);
+      const nameEl    = document.getElementById(`bName${i}`);
+
+      if (data.error) {
+        verdictEl.textContent = data.error.includes('rate limit') ? 'Rate limited' : 'Error';
+        verdictEl.style.color = 'var(--sf-muted)';
+        nameEl.textContent = data.error.slice(0, 60);
+        if (data.error.includes('rate limit')) {
+          for (let s = 16; s > 0 && !stopFlag; s--) {
+            statusEl.textContent = `Rate limited — waiting ${s}s… (${i + 1}/${hashes.length})`;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          continue;
+        }
+      } else {
+        const mal = data.malicious || 0;
+        const sus = data.suspicious || 0;
+        const tot = data.total_engines || 0;
+        const color = mal > 0 ? 'var(--sf-danger)' : sus > 0 ? 'var(--sf-warning)' : 'var(--sf-accent2)';
+        const icon  = mal > 0 ? 'bi-shield-x' : sus > 0 ? 'bi-shield-exclamation' : 'bi-shield-check';
+        const label = mal > 0 ? `Malicious ${mal}/${tot}` : sus > 0 ? `Suspicious ${sus}/${tot}` : 'Clean';
+        verdictEl.innerHTML = `<i class="bi ${icon} me-1"></i>${label}`;
+        verdictEl.style.color = color;
+        nameEl.textContent = data.name || '—';
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    bar.style.width = '100%';
+    statusEl.textContent = `Done — ${hashes.length} hash${hashes.length !== 1 ? 'es' : ''} checked`;
+    running = false;
+    btnAll.disabled = false;
+    btnAll.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Re-check All';
+  });
+})();
 
 // ── Hash checker ──────────────────────────────────────────────────────────────
 (function () {

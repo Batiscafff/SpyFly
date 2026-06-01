@@ -206,6 +206,23 @@ code {
   font-size: 0.85em;
 }
 
+/* Hash batch drop zone */
+.hash-drop-zone {
+  border: 2px dashed var(--sf-border);
+  border-radius: 8px;
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  user-select: none;
+}
+
+.hash-drop-zone:hover,
+.hash-drop-zone.drag-over {
+  border-color: var(--sf-accent);
+  background: rgba(88, 166, 255, 0.05);
+}
+
 /* Dashboard tabs (URL / Hash) */
 .sf-tabs {
   border-bottom: 1px solid var(--sf-border);
