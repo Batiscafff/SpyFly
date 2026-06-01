@@ -152,7 +152,8 @@ body {
   transition: border-color 0.2s;
 }
 
-.scan-card:hover {
+.scan-card:hover,
+.scan-card.selected {
   border-color: var(--sf-accent);
 }
 

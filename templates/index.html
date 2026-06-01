@@ -140,43 +140,29 @@
       <!-- ── Hash tab ──────────────────────────────────────── -->
       <div class="tab-pane fade" id="pane-hash" role="tabpanel">
         <div class="sf-scan-form">
-          <div class="d-flex align-items-center gap-2 mb-4 p-3 rounded"
-               style="background:rgba(88,166,255,0.06);border:1px dashed var(--sf-border);">
-            <i class="bi bi-tools" style="color:var(--sf-muted);font-size:1.3rem;"></i>
-            <div>
-              <div class="fw-semibold" style="font-size:.9rem;">Coming soon</div>
-              <div class="sf-muted" style="font-size:.78rem;">
-                File hash verification against VirusTotal, NSRL and local database.
-              </div>
-            </div>
-          </div>
-
           <div class="mb-3">
             <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
               Hash value
             </label>
-            <input type="text" class="form-control form-control-lg" disabled
-                   placeholder="MD5, SHA-1 or SHA-256…" autocomplete="off">
+            <input type="text" id="hashInput" class="form-control form-control-lg"
+                   placeholder="MD5 · SHA-1 · SHA-256" autocomplete="off" spellcheck="false">
+            <div id="hashAlgoHint" class="mt-1" style="font-size:.75rem;min-height:1.2em;"></div>
           </div>
 
           <div class="mb-4">
-            <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
-              Algorithm
-            </label>
-            <div class="d-flex gap-3">
-              {% for algo in ["MD5", "SHA-1", "SHA-256"] %}
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="hash_algo" disabled
-                       {% if algo == "SHA-256" %}checked{% endif %}>
-                <label class="form-check-label sf-muted">{{ algo }}</label>
-              </div>
-              {% endfor %}
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="hashDryRun">
+              <label class="form-check-label sf-muted" for="hashDryRun">
+                <i class="bi bi-bug me-1"></i>Dry-run (demo data, no real API calls)
+              </label>
             </div>
           </div>
 
-          <button type="button" class="btn btn-sf-primary w-100 py-2" disabled>
+          <button type="button" id="btnCheckHash" class="btn btn-sf-primary w-100 py-2">
             <i class="bi bi-search me-2"></i>Check Hash
           </button>
+
+          <div id="hashResults" class="mt-4" style="display:none;"></div>
         </div>
       </div>
 
@@ -248,7 +234,7 @@
           </div>
 
           <!-- Actions -->
-          <div class="d-flex gap-2 align-items-center" style="flex-shrink:0;">
+          <div class="scan-actions d-flex gap-2 align-items-center" style="flex-shrink:0;">
             {% if scan.status == 'running' or scan.status == 'queued' %}
             <a href="/scan/{{ scan.id }}" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-hourglass-split me-1"></i>Progress
@@ -323,22 +309,142 @@
     toolbar.classList.toggle('d-flex', n > 0);
     if (selectAll) selectAll.indeterminate = n > 0 && n < checkboxes().length;
     if (selectAll) selectAll.checked = n > 0 && n === checkboxes().length;
+    document.querySelectorAll('.scan-actions').forEach(el => {
+      el.style.visibility = n > 0 ? 'hidden' : '';
+    });
   }
 
-  checkboxes().forEach(cb => cb.addEventListener('change', syncToolbar));
+  function syncCardHighlight(cb) {
+    cb.closest('.scan-card').classList.toggle('selected', cb.checked);
+  }
+
+  checkboxes().forEach(cb => cb.addEventListener('change', () => {
+    syncCardHighlight(cb);
+    syncToolbar();
+  }));
 
   if (selectAll) {
     selectAll.addEventListener('change', () => {
-      checkboxes().forEach(cb => { cb.checked = selectAll.checked; });
+      checkboxes().forEach(cb => { cb.checked = selectAll.checked; syncCardHighlight(cb); });
       syncToolbar();
     });
   }
 
   document.getElementById('btn-cancel-select').addEventListener('click', () => {
-    checkboxes().forEach(cb => { cb.checked = false; });
+    checkboxes().forEach(cb => { cb.checked = false; syncCardHighlight(cb); });
     if (selectAll) selectAll.checked = false;
     syncToolbar();
   });
+
+// ── Hash checker ──────────────────────────────────────────────────────────────
+(function () {
+  const input      = document.getElementById('hashInput');
+  const btn        = document.getElementById('btnCheckHash');
+  const resultsEl  = document.getElementById('hashResults');
+  const algoHint   = document.getElementById('hashAlgoHint');
+  const dryRunChk  = document.getElementById('hashDryRun');
+  if (!input) return;
+
+  const ALGO = { 32: 'MD5', 40: 'SHA-1', 64: 'SHA-256' };
+
+  function detectAlgo(val) {
+    const h = val.replace(/\s/g, '');
+    if (!h) return null;
+    const algo = ALGO[h.length];
+    return (algo && /^[0-9a-fA-F]+$/.test(h)) ? algo : false;
+  }
+
+  input.addEventListener('input', () => {
+    const algo = detectAlgo(input.value);
+    if (algo === null)       { algoHint.textContent = ''; return; }
+    if (algo === false)      { algoHint.textContent = 'Enter a valid MD5 (32), SHA-1 (40) or SHA-256 (64) hex hash'; algoHint.style.color = 'var(--sf-warning)'; return; }
+    algoHint.textContent = `Detected: ${algo}`;
+    algoHint.style.color = 'var(--sf-accent2)';
+  });
+
+  btn.addEventListener('click', async () => {
+    const h = input.value.replace(/\s/g, '');
+    if (!detectAlgo(h)) {
+      algoHint.textContent = 'Enter a valid MD5 (32), SHA-1 (40) or SHA-256 (64) hex hash';
+      algoHint.style.color = 'var(--sf-warning)';
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Checking…';
+    resultsEl.style.display = 'none';
+    try {
+      const dry  = dryRunChk.checked ? '1' : '0';
+      const resp = await fetch(`/api/hash?hash=${encodeURIComponent(h)}&dry_run=${dry}`);
+      const data = await resp.json();
+      renderHashResults(data, h);
+    } catch (e) {
+      renderHashResults({ error: 'Network error: ' + e.message }, h);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-search me-2"></i>Check Hash';
+    }
+  });
+
+  function renderHashResults(data, hash) {
+    resultsEl.style.display = '';
+    if (data.error) {
+      resultsEl.innerHTML = `<div class="p-3 rounded" style="background:rgba(248,81,73,0.1);border:1px solid var(--sf-danger);color:var(--sf-danger);">
+        <i class="bi bi-exclamation-triangle me-2"></i>${data.error}</div>`;
+      return;
+    }
+    const mal   = data.malicious  || 0;
+    const sus   = data.suspicious || 0;
+    const total = data.total_engines || 0;
+    const verdictColor = mal > 0 ? 'var(--sf-danger)' : sus > 0 ? 'var(--sf-warning)' : 'var(--sf-accent2)';
+    const verdictIcon  = mal > 0 ? 'bi-shield-x' : sus > 0 ? 'bi-shield-exclamation' : 'bi-shield-check';
+    const verdictText  = mal > 0 ? `MALICIOUS — ${mal}/${total} engines detected` : sus > 0 ? `SUSPICIOUS — ${sus}/${total} engines flagged` : `CLEAN — 0/${total} engines flagged`;
+    const verdictBg    = mal > 0 ? 'rgba(248,81,73,0.1)' : sus > 0 ? 'rgba(210,153,34,0.1)' : 'rgba(63,185,80,0.1)';
+    const sizeStr = data.size
+      ? (data.size > 1048576 ? (data.size / 1048576).toFixed(1) + ' MB' : (data.size / 1024).toFixed(1) + ' KB')
+      : '—';
+
+    function row(label, value) {
+      return `<div class="col-6 mb-1"><span class="sf-muted">${label}:</span> ${value ?? '—'}</div>`;
+    }
+
+    resultsEl.innerHTML = `
+      <div class="p-3 rounded mb-3 text-center fw-bold"
+           style="background:${verdictBg};border:1px solid ${verdictColor};color:${verdictColor};font-size:1rem;">
+        <i class="bi ${verdictIcon} me-2"></i>${verdictText}
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-4">
+          <div class="sf-card p-3 text-center">
+            <div style="font-size:1.5rem;font-weight:700;color:var(--sf-danger);">${mal}</div>
+            <div class="sf-muted" style="font-size:.75rem;">Malicious</div>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="sf-card p-3 text-center">
+            <div style="font-size:1.5rem;font-weight:700;color:var(--sf-warning);">${sus}</div>
+            <div class="sf-muted" style="font-size:.75rem;">Suspicious</div>
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="sf-card p-3 text-center">
+            <div style="font-size:1.5rem;font-weight:700;">${total}</div>
+            <div class="sf-muted" style="font-size:.75rem;">Total engines</div>
+          </div>
+        </div>
+      </div>
+      <div class="sf-card p-3">
+        <div class="sf-section-label mb-2">File info</div>
+        <div class="row" style="font-size:.84rem;">
+          ${row('Name', data.name)}
+          ${row('Type', data.type)}
+          ${row('Size', sizeStr)}
+          ${row('Last seen', data.last_seen)}
+          ${row('Reputation', data.reputation)}
+          ${row('Hash', `<code style="word-break:break-all;font-size:.78rem;">${hash}</code>`)}
+        </div>
+      </div>`;
+  }
+})();
 
   document.getElementById('btn-delete-selected').addEventListener('click', () => {
     const ids = checked().map(c => c.value);

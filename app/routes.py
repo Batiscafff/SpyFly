@@ -111,6 +111,21 @@ def delete_bulk():
     return jsonify({"ok": True})
 
 
+@bp.route("/api/hash")
+def hash_lookup():
+    from app.modules.passive_osint import lookup_hash_virustotal
+    app = current_app._get_current_object()
+    hash_value = request.args.get("hash", "").strip()
+    dry_run = request.args.get("dry_run") == "1"
+
+    import re as _re
+    if not hash_value or not _re.fullmatch(r'[0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', hash_value):
+        return jsonify({"error": "Invalid hash — expected MD5 (32), SHA-1 (40) or SHA-256 (64) hex chars"}), 400
+
+    api_key = app.config.get("VIRUSTOTAL_API_KEY", "")
+    return jsonify(lookup_hash_virustotal(api_key, hash_value, dry_run))
+
+
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
     from app import settings_store

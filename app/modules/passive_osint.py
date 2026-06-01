@@ -237,6 +237,62 @@ def run_whois(target: str, dry_run: bool) -> dict:
         return {"error": str(exc)}
 
 
+# ─── VirusTotal hash lookup ───────────────────────────────────────────────────
+
+def lookup_hash_virustotal(api_key: str, hash_value: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "name": "malware_sample.exe",
+            "type": "Win32 EXE",
+            "size": 245760,
+            "malicious": 58,
+            "suspicious": 3,
+            "undetected": 14,
+            "total_engines": 75,
+            "last_seen": "2025-03-12",
+            "reputation": -75,
+            "votes_harmless": 0,
+            "votes_malicious": 12,
+        }
+
+    if not api_key:
+        return {"error": "VIRUSTOTAL_API_KEY not configured"}
+
+    try:
+        resp = requests.get(
+            f"https://www.virustotal.com/api/v3/files/{hash_value}",
+            headers={"x-apikey": api_key},
+            timeout=15,
+        )
+        if resp.status_code == 404:
+            return {"error": "Hash not found in VirusTotal database"}
+        if resp.status_code == 429:
+            return {"error": "VirusTotal rate limit (4 req/min on free plan)"}
+        resp.raise_for_status()
+        attr = resp.json().get("data", {}).get("attributes", {})
+        stats = attr.get("last_analysis_stats", {})
+        votes = attr.get("total_votes", {})
+        last_seen = attr.get("last_submission_date")
+        if last_seen:
+            from datetime import datetime as _dt
+            last_seen = _dt.utcfromtimestamp(last_seen).strftime("%Y-%m-%d")
+        return {
+            "name": attr.get("meaningful_name") or attr.get("name"),
+            "type": attr.get("type_description"),
+            "size": attr.get("size"),
+            "malicious": stats.get("malicious", 0),
+            "suspicious": stats.get("suspicious", 0),
+            "undetected": stats.get("undetected", 0),
+            "total_engines": sum(stats.values()),
+            "last_seen": last_seen,
+            "reputation": attr.get("reputation", 0),
+            "votes_harmless": votes.get("harmless", 0),
+            "votes_malicious": votes.get("malicious", 0),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path) -> dict:
