@@ -241,38 +241,82 @@
   <!-- Active scan: nmap -->
   {% if active.nmap %}
   <div class="sf-card mb-4">
-    <div class="sf-card-header"><i class="bi bi-broadcast me-2"></i>Nmap Port Scan</div>
+    <div class="sf-card-header">
+      <i class="bi bi-broadcast me-2"></i>Nmap Port Scan
+      {% if active.nmap.ports_spec %}
+      <span class="ms-2 fw-normal sf-muted" style="font-size:.75rem;text-transform:none;letter-spacing:0;">
+        <i class="bi bi-diagram-2 me-1"></i>scanned:
+        <code style="font-size:.75rem;">{{ active.nmap.ports_spec }}</code>
+      </span>
+      {% endif %}
+    </div>
     <div class="p-3">
     {% if active.nmap.error %}
       <div class="sf-muted">{{ active.nmap.error }}</div>
-    {% elif active.nmap.ports %}
+    {% else %}
       {% if active.nmap.os_guess %}
       <div class="mb-2" style="font-size:.82rem;">
         <span class="sf-muted">OS guess:</span>
         <span class="fw-semibold">{{ active.nmap.os_guess }}</span>
       </div>
       {% endif %}
-      <table class="sf-table">
+
+      {# Split into open/filtered and closed #}
+      {% set open_ports   = [] %}
+      {% set closed_ports = [] %}
+      {% for p in (active.nmap.ports or []) %}
+        {% if p.state in ('open', 'open|filtered', 'filtered') %}
+          {% set _ = open_ports.append(p) %}
+        {% else %}
+          {% set _ = closed_ports.append(p) %}
+        {% endif %}
+      {% endfor %}
+
+      {% if open_ports %}
+      <div class="sf-section-label mb-2">Open / Filtered</div>
+      <table class="sf-table mb-3">
         <thead><tr><th>Port</th><th>Service</th><th>Version</th><th>State</th></tr></thead>
         <tbody>
-          {% for p in active.nmap.ports %}
+          {% for p in open_ports %}
           <tr>
             <td><code>{{ p.port }}/{{ p.protocol }}</code></td>
             <td>{{ p.service }}</td>
             <td class="sf-muted" style="font-size:.78rem;">{{ p.version or '—' }}</td>
-            <td>
-              {% if p.state == 'open' %}
-              <span style="color:var(--sf-danger);font-size:.78rem;">● open</span>
-              {% else %}
-              <span class="sf-muted" style="font-size:.78rem;">{{ p.state }}</span>
-              {% endif %}
-            </td>
+            <td><span style="color:var(--sf-danger);font-size:.78rem;">● {{ p.state }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-    {% else %}
-      <div class="sf-muted">No open ports found.</div>
+      {% else %}
+      <div class="sf-muted mb-2" style="font-size:.85rem;">No open ports found in scanned range.</div>
+      {% endif %}
+
+      {% if closed_ports %}
+      <details>
+        <summary class="sf-muted" style="cursor:pointer;font-size:.8rem;user-select:none;">
+          <i class="bi bi-dash-circle me-1"></i>{{ closed_ports|length }} well-known closed port{{ 's' if closed_ports|length != 1 }}
+          <span style="font-size:.72rem;">(nmap reports these even when closed)</span>
+        </summary>
+        <table class="sf-table mt-2" style="opacity:.6;">
+          <thead><tr><th>Port</th><th>Service</th><th>State</th></tr></thead>
+          <tbody>
+            {% for p in closed_ports %}
+            <tr>
+              <td><code>{{ p.port }}/{{ p.protocol }}</code></td>
+              <td>{{ p.service }}</td>
+              <td class="sf-muted" style="font-size:.78rem;">{{ p.state }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+
+      {% if active.nmap.not_shown_closed %}
+      <div class="mt-2 sf-muted" style="font-size:.78rem;">
+        <i class="bi bi-x-circle me-1"></i>{{ active.nmap.not_shown_closed }} other port{{ 's' if active.nmap.not_shown_closed != 1 }} in scanned range — all closed, grouped by nmap
+      </div>
+      {% endif %}
     {% endif %}
     </div>
   </div>

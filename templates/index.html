@@ -42,13 +42,21 @@
               <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
                 Scan mode
               </label>
-              <div class="d-flex gap-3">
+              <div class="d-flex gap-3 flex-wrap">
                 <div class="form-check">
                   <input class="form-check-input" type="radio" name="scan_mode" id="modePassive"
                          value="passive" checked>
                   <label class="form-check-label" for="modePassive">
                     <i class="bi bi-eye-slash me-1 sf-muted"></i>Passive
-                    <small class="d-block sf-muted" style="font-size:.75rem;">API-only, no direct contact</small>
+                    <small class="d-block sf-muted" style="font-size:.75rem;">OSINT only, no direct contact</small>
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="scan_mode" id="modeActive"
+                         value="active">
+                  <label class="form-check-label" for="modeActive">
+                    <i class="bi bi-terminal me-1" style="color:var(--sf-accent2);"></i>Active
+                    <small class="d-block sf-muted" style="font-size:.75rem;">nmap · SSL · DNS, no OSINT</small>
                   </label>
                 </div>
                 <div class="form-check">
@@ -56,9 +64,22 @@
                          value="full">
                   <label class="form-check-label" for="modeFull">
                     <i class="bi bi-lightning-charge me-1" style="color:var(--sf-warning);"></i>Full
-                    <small class="d-block sf-muted" style="font-size:.75rem;">nmap + SSL + DNS brute</small>
+                    <small class="d-block sf-muted" style="font-size:.75rem;">OSINT + nmap + SSL + DNS</small>
                   </label>
                 </div>
+              </div>
+            </div>
+
+            <!-- Ports (Full mode only) -->
+            <div class="mb-4" id="ports-field" style="display:none;">
+              <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
+                Ports <span style="font-weight:400;">(optional)</span>
+              </label>
+              <input type="text" name="ports" id="portsInput" class="form-control"
+                     placeholder="Default  ·  or  80,443,8080  ·  or  1-1024"
+                     autocomplete="off">
+              <div class="sf-muted mt-1" style="font-size:.75rem;">
+                Blank = defaults &nbsp;&bull;&nbsp; list: <code>80,443,3306</code> &nbsp;&bull;&nbsp; range: <code>1-1024</code> &nbsp;&bull;&nbsp; mixed: <code>22,80,8000-9000</code>
               </div>
             </div>
 
@@ -82,18 +103,24 @@
           <div class="sf-section-label mb-2">What gets collected</div>
           <div class="row g-2">
             {% set sources = [
-              ("bi-cloud-check", "Shodan", "Ports, banners, geo"),
-              ("bi-shield-check", "VirusTotal", "IP reputation"),
-              ("bi-exclamation-triangle", "AbuseIPDB", "Abuse score"),
-              ("bi-diagram-3", "crt.sh", "Subdomains"),
-              ("bi-info-circle", "WHOIS", "Registration info"),
-              ("bi-cpu", "NVD / CVE", "Known vulnerabilities"),
-              ("bi-crosshair", "MITRE ATT&CK", "Technique mapping"),
+              ("bi-cloud-check",         "passive", "Shodan",        "Ports, banners, geo"),
+              ("bi-shield-check",        "passive", "VirusTotal",    "IP reputation"),
+              ("bi-exclamation-triangle","passive", "AbuseIPDB",     "Abuse score"),
+              ("bi-diagram-3",           "passive", "crt.sh",        "Subdomains"),
+              ("bi-info-circle",         "passive", "WHOIS",         "Registration info"),
+              ("bi-broadcast",           "active",  "nmap",          "Ports, services, OS"),
+              ("bi-lock",                "active",  "SSL/TLS",       "Certificate analysis"),
+              ("bi-search",              "active",  "DNS brute",     "Subdomain enumeration"),
+              ("bi-cpu",                 "both",    "NVD / CVE",     "Known vulnerabilities"),
+              ("bi-crosshair",           "both",    "MITRE ATT&CK",  "Technique mapping"),
             ] %}
-            {% for icon, name, desc in sources %}
+            {% for icon, kind, name, desc in sources %}
             <div class="col-6">
               <div class="d-flex align-items-start gap-2" style="font-size:.82rem;">
-                <i class="bi {{ icon }} mt-1" style="color:var(--sf-accent);flex-shrink:0;"></i>
+                <i class="bi {{ icon }} mt-1" style="color:
+                  {%- if kind == 'passive' %}var(--sf-accent)
+                  {%- elif kind == 'active' %}var(--sf-accent2)
+                  {%- else %}var(--sf-muted){% endif %};flex-shrink:0;"></i>
                 <div>
                   <div class="fw-semibold">{{ name }}</div>
                   <div class="sf-muted" style="font-size:.75rem;">{{ desc }}</div>
@@ -101,6 +128,11 @@
               </div>
             </div>
             {% endfor %}
+          </div>
+          <div class="mt-3 d-flex gap-3" style="font-size:.73rem;">
+            <span><i class="bi bi-circle-fill me-1" style="color:var(--sf-accent);font-size:.55rem;"></i>Passive &amp; Full</span>
+            <span><i class="bi bi-circle-fill me-1" style="color:var(--sf-accent2);font-size:.55rem;"></i>Active &amp; Full</span>
+            <span><i class="bi bi-circle-fill me-1" style="color:var(--sf-muted);font-size:.55rem;"></i>All modes</span>
           </div>
         </div>
       </div>
@@ -260,6 +292,21 @@
 
 {% block scripts %}
 <script>
+// Show ports field for Active and Full modes
+(function () {
+  const radios = document.querySelectorAll('input[name="scan_mode"]');
+  const field  = document.getElementById('ports-field');
+  if (!field) return;
+  function update() {
+    const mode = document.querySelector('input[name="scan_mode"]:checked')?.value;
+    const show = mode === 'active' || mode === 'full';
+    field.style.display = show ? '' : 'none';
+    if (!show) document.getElementById('portsInput').value = '';
+  }
+  radios.forEach(r => r.addEventListener('change', update));
+  update();
+})();
+
 (function () {
   const checkboxes  = () => [...document.querySelectorAll('.scan-checkbox')];
   const checked     = () => checkboxes().filter(c => c.checked);

@@ -17,48 +17,45 @@ Flask-застосунок для автоматизованої OSINT-розв�
 | **Active Scan** | nmap (порти + версії сервісів), SSL/TLS аналіз, DNS brute-force |
 | **CVE Lookup** | NVD API v2 — пошук CVE для знайдених версій ПЗ + CVSS-скоринг |
 | **MITRE ATT&CK** | Автоматичний маппінг знахідок на техніки матриці ATT&CK |
-| **HTML Report** | Структурований dark-theme звіт зі всіма знахідками |
+| **HTML Report** | Структурований dark-theme звіт, скачується як самодостатній HTML |
 
 ---
 
 ## Встановлення
 
 ```bash
-# Клонувати або розпакувати проект
 cd SpyFly
-
-# Встановити залежності
 pip install -r requirements.txt
-
-# Скопіювати та заповнити конфіг
-cp .env.example .env
 ```
 
 ### Системні залежності
 
 ```bash
-# nmap потрібен для активного сканування
 sudo apt install nmap        # Debian/Ubuntu/Mint
-sudo dnf install nmap        # Fedora/RHEL
-brew install nmap            # macOS
 ```
 
 ---
 
-## Конфігурація (.env)
+## Конфігурація
 
+API-ключі можна задати двома способами:
+
+**1. Через веб-інтерфейс** — відкрити `http://localhost:5000/settings` і вставити ключі.  
+Зберігаються в `settings.json` (в `.gitignore`).
+
+**2. Через `.env` файл:**
+```bash
+cp .env.example .env
+```
 ```ini
-# Обов'язково для OSINT-модулів
-VIRUSTOTAL_API_KEY=ваш_ключ     # https://www.virustotal.com — безкоштовно, 4 req/min
-SHODAN_API_KEY=ваш_ключ         # https://account.shodan.io — безкоштовно
-ABUSEIPDB_API_KEY=ваш_ключ      # https://www.abuseipdb.com — безкоштовно, 1000 req/day
-
-# Опційно
-NVD_API_KEY=                    # https://nvd.nist.gov/developers — збільшує rate limit NVD
-SECRET_KEY=змінити-в-продакшн   # Flask session key
+VIRUSTOTAL_API_KEY=ваш_ключ     # https://www.virustotal.com
+SHODAN_API_KEY=ваш_ключ         # https://account.shodan.io
+ABUSEIPDB_API_KEY=ваш_ключ      # https://www.abuseipdb.com
+NVD_API_KEY=                    # https://nvd.nist.gov/developers (опційно)
 ```
 
-Без API-ключів модулі повертають `"error": "API key not configured"` і скан продовжується.
+`settings.json` має пріоритет над `.env`. Без ключів модулі повертають
+`"error": "API key not configured"` і скан продовжується.
 
 ---
 
@@ -76,36 +73,55 @@ python run.py
 
 ### 1. Dashboard
 
-Відкрити `http://localhost:5000` — головна сторінка з формою та історією сканів.
+Відкрити `http://localhost:5000`. Форма запуску скану має дві вкладки:
 
-**Поля форми:**
-- **Target** — IP-адреса або доменне ім'я (тільки авторизовані хости)
+**URL / IP** — сканування по IP-адресі або домену.
+
+Поля:
+- **Target** — IP-адреса або доменне ім'я
 - **Scan mode:**
-  - `Passive` — запити тільки через публічні API, без прямого контакту з ціллю
-  - `Full` — пасивний OSINT + nmap + SSL + DNS brute-force
-- **Dry-run** — демо-режим з фіктивними даними, без реальних API-запитів
+  - `Passive` — тільки OSINT через публічні API, без прямого контакту з ціллю
+  - `Active` — тільки nmap + SSL + DNS brute-force, без OSINT (для локальної інфраструктури)
+  - `Full` — OSINT + активне сканування
+- **Ports** *(тільки для Active / Full)* — порти для nmap. Формати:
+  - порожньо — дефолтні 18 портів (`21,22,80,443,...`)
+  - перелік: `80,443,8080`
+  - діапазон: `1-1024`
+  - змішано: `22,80,8000-9000`
+- **Dry-run** — демо-режим з фіктивними даними, без реальних запитів
+
+**Hash** — перевірка хешів файлів *(в розробці)*.
 
 ### 2. Прогрес сканування
 
-Після запуску відкривається сторінка з live-прогресом. Скан виконується у фоновому потоці,
-браузер опитує статус кожні 2 секунди. Після завершення — автоматичний перехід до звіту.
+Після запуску — сторінка з live-прогресом. Скан виконується у фоновому потоці,
+браузер опитує статус кожні 2 секунди. При завершенні — автоматичний перехід до звіту.
 
 ### 3. Звіт
 
-Звіт містить секції:
-- **Summary bar** — кількість відкритих портів, CVE, ATT&CK технік, субдоменів
-- **Shodan** — профіль хоста (org, ISP, геолокація, банери)
-- **VirusTotal** — репутація IP (кількість malicious engine detections)
-- **AbuseIPDB** — abuse confidence score, кількість скарг
-- **WHOIS** — реєстратор, дати, nameservers, email-контакти
-- **crt.sh** — субдомени через Certificate Transparency logs
-- **Nmap** — відкриті порти, версії сервісів, OS guess
-- **SSL/TLS** — сертифікат (issuer, expiry, протокол, cipher, SAN)
-- **DNS Brute-force** — знайдені субдомени
-- **CVE Findings** — CVE з CVSS-балами для виявлених версій ПЗ
-- **MITRE ATT&CK** — таблиця спрацьованих технік з поясненням
+Звіт містить секції залежно від режиму:
 
-Кнопка **Download HTML** зберігає звіт як самодостатній HTML-файл.
+| Секція | Passive | Active | Full |
+|--------|:-------:|:------:|:----:|
+| Summary bar | ✓ | ✓ | ✓ |
+| Shodan / VT / AbuseIPDB / WHOIS / crt.sh | ✓ | — | ✓ |
+| Nmap ports (open / closed / not shown) | — | ✓ | ✓ |
+| SSL/TLS certificate | — | ✓ | ✓ |
+| DNS Brute-force | — | ✓ | ✓ |
+| CVE Findings | ✓ | ✓ | ✓ |
+| MITRE ATT&CK | ✓ | ✓ | ✓ |
+
+Кнопка **Download HTML** зберігає повністю автономний HTML-файл зі вбудованими стилями.
+
+### 4. Історія сканів
+
+- Картки сканів зі статусом, датою, кількістю CVE та ATT&CK технік
+- Одиночне видалення — кнопка `🗑` на картці
+- Масове видалення — чекбокси + тулбар "Delete selected"
+
+### 5. Налаштування
+
+`http://localhost:5000/settings` — введення API-ключів через UI без редагування файлів.
 
 ---
 
@@ -113,7 +129,7 @@ python run.py
 
 ```
 SpyFly/
-├── run.py                        # Точка входу (python run.py)
+├── run.py                        # Точка входу
 ├── config.py                     # Конфігурація (читає .env)
 ├── requirements.txt
 ├── .env.example
@@ -122,6 +138,7 @@ SpyFly/
 │   ├── __init__.py               # Flask app factory
 │   ├── routes.py                 # HTTP маршрути
 │   ├── scanner.py                # Оркестратор сканування + background thread
+│   ├── settings_store.py         # Зчитує/записує settings.json
 │   └── modules/
 │       ├── passive_osint.py      # Shodan · VT · AbuseIPDB · crt.sh · WHOIS
 │       ├── active_scan.py        # nmap · SSL · DNS brute-force
@@ -130,55 +147,56 @@ SpyFly/
 │
 ├── templates/
 │   ├── base.html                 # Bootstrap 5 dark, navbar
-│   ├── index.html                # Dashboard (форма + історія)
+│   ├── index.html                # Dashboard (форма + вкладки URL/Hash + історія)
 │   ├── scan_progress.html        # Live-прогрес
-│   └── scan_report.html          # Повний звіт
+│   ├── scan_report.html          # Повний звіт
+│   └── settings.html             # Сторінка API-ключів
 │
 ├── static/
 │   ├── css/custom.css            # Dark theme стилі
 │   └── js/scan_progress.js       # JS polling
 │
-├── scans/                        # Дані сканів (JSON)
-│   └── <uuid>/
-│       ├── status.json           # Статус + прогрес
-│       └── results.json          # Повні результати
-│
-└── reports/                      # Готові HTML-звіти
-    └── <uuid>.html
+└── scans/                        # Дані сканів (JSON)
+    └── <uuid>/
+        ├── status.json           # Статус + прогрес
+        └── results.json          # Повні результати
 ```
 
 ### HTTP маршрути
 
 | Метод | URL | Опис |
 |-------|-----|------|
-| `GET` | `/` | Dashboard: форма + список сканів |
+| `GET` | `/` | Dashboard |
 | `POST` | `/scan` | Запуск нового скану |
-| `GET` | `/scan/<id>` | Прогрес або готовий звіт |
-| `GET` | `/api/scan/<id>/status` | JSON статус (для JS polling) |
-| `GET` | `/report/<id>` | HTML-звіт для скачування |
-| `POST` | `/scan/<id>/delete` | Видалення скану |
+| `GET` | `/scan/<id>` | Прогрес або звіт |
+| `GET` | `/api/scan/<id>/status` | JSON статус (JS polling) |
+| `GET` | `/report/<id>` | Скачати автономний HTML-звіт |
+| `POST` | `/scan/<id>/delete` | Видалити один скан |
+| `POST` | `/scans/delete-bulk` | Масове видалення (JSON `{"ids":[...]}`) |
+| `GET/POST` | `/settings` | API-ключі |
 
 ### Формат status.json
 
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "uuid",
   "target": "example.com",
-  "scan_mode": "passive",
+  "scan_mode": "active",
+  "ports": "1-1024",
   "dry_run": false,
   "status": "done",
   "progress": 100,
   "current_module": null,
   "modules": {
-    "passive_osint": "done",
-    "active_scan": "skipped",
+    "passive_osint": "skipped",
+    "active_scan": "done",
     "cve_lookup": "done",
     "mitre_mapper": "done"
   },
-  "started_at": "2025-06-01T12:00:00",
-  "finished_at": "2025-06-01T12:00:45",
-  "cve_count": 3,
-  "attck_count": 5
+  "started_at": "2026-06-02T10:00:00",
+  "finished_at": "2026-06-02T10:00:45",
+  "cve_count": 2,
+  "attck_count": 4
 }
 ```
 
@@ -188,70 +206,52 @@ SpyFly/
 
 ### passive_osint.py
 
-Паралельний збір з 5 джерел (послідовно з затримками для дотримання rate limit):
-
-| Функція | API | Rate limit (безкоштовно) |
-|---------|-----|--------------------------|
-| `run_shodan()` | Shodan REST API | Необмежено для `api.host()` на paid plan |
-| `run_virustotal()` | VirusTotal API v3 | 4 req/min, 500 req/day |
+| Функція | API | Rate limit |
+|---------|-----|-----------|
+| `run_shodan()` | Shodan REST API | — |
+| `run_virustotal()` | VirusTotal API v3 | 4 req/min |
 | `run_abuseipdb()` | AbuseIPDB API v2 | 1000 req/day |
-| `run_crtsh()` | crt.sh JSON API | Без обмежень |
-| `run_whois()` | python-whois | Без обмежень |
+| `run_crtsh()` | crt.sh JSON API | — |
+| `run_whois()` | python-whois | — |
+
+`run_shodan()` і `run_whois()` огорнуті в `concurrent.futures.ThreadPoolExecutor` з timeout=15s.
 
 ### active_scan.py
 
-Активний режим — виконується тільки при `scan_mode=full`, вимагає авторизації:
-
-- **`run_nmap()`** — порти `21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8080,8443,27017`, версії сервісів, OS guess
-- **`run_ssl_check()`** — SSL-сертифікат на порту 443: subject, issuer, expiry, cipher, SAN, протокол
-- **`run_dns_brute()`** — перебір ~70 поширених субдоменів (`www`, `api`, `mail`, `admin`, `vpn`...)
+- **`run_nmap()`** — приймає `ports: str` (перелік, діапазон або порожньо для дефолту). `_sanitize_ports()` валідує і повертає `DEFAULT_PORTS` при невалідному значенні. Результат включає `ports_spec` і `not_shown_closed`.
+- **`run_ssl_check()`** — SSL-сертифікат на порту 443: subject, issuer, expiry, cipher, SAN
+- **`run_dns_brute()`** — перебір ~70 поширених субдоменів
 
 ### cve_lookup.py
 
-Для кожного `{service, version}` з nmap-результатів:
-
-1. Запит до `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=<service version>`
-2. Парсинг CVSS v3.1 / v3.0 / v2.0
-3. Класифікація: `CRITICAL ≥9.0`, `HIGH ≥7.0`, `MEDIUM ≥4.0`, `LOW >0`
-4. Rate limit: 6.5 сек між запитами без ключа, 0.7 сек з ключем
+NVD API v2.0, rate limit: 6.5 сек/запит без ключа, 0.7 сек з ключем.
+При `429` — sleep 30с + retry.
 
 ### mitre_mapper.py
 
-Rule engine без зовнішніх залежностей. Правила спрацьовують на основі агрегованих даних:
+Rule engine без зовнішніх залежностей, 12 правил:
 
 | Умова | Техніка | Тактика |
 |-------|---------|---------|
-| Відкриті порти виявлені | T1595.001 Scanning IP Blocks | Reconnaissance |
-| CVE score ≥ 7.0 на публічному сервісі | T1190 Exploit Public-Facing App | Initial Access |
-| Відкриті DB-порти (3306, 5432, 6379...) | T1190 | Initial Access |
-| SSH/RDP/VNC/Telnet відкриті | T1133 External Remote Services | Initial Access |
+| Відкриті порти | T1595.001 Scanning IP Blocks | Reconnaissance |
+| CVE score ≥ 7.0 | T1190 Exploit Public-Facing App | Initial Access |
+| DB-порти відкриті | T1190 | Initial Access |
+| SSH/RDP/VNC/Telnet | T1133 External Remote Services | Initial Access |
 | HTTP/FTP без шифрування | T1040 Network Sniffing | Credential Access |
 | CVE з ознаками RCE | T1203 Exploitation for Client Execution | Execution |
 | Знайдені субдомени | T1596.001 DNS/Passive DNS | Reconnaissance |
 | Email у WHOIS | T1589.002 Email Addresses | Reconnaissance |
-| Версії ПЗ ідентифіковано | T1592.002 Software | Reconnaissance |
-| WHOIS дані доступні | T1583.001 Domains | Resource Development |
-| Shodan-listed vulns | T1078 Valid Accounts | Initial Access |
-| SSL-сертифікат прострочений | T1190 | Initial Access |
+| Версії ПЗ | T1592.002 Software | Reconnaissance |
+| WHOIS доступний | T1583.001 Domains | Resource Development |
+| Shodan vulns | T1078 Valid Accounts | Initial Access |
+| SSL прострочений | T1190 | Initial Access |
 
 ---
 
 ## Тестування (dry-run)
 
-Dry-run повертає реалістичні фіктивні дані для кожного модуля без реальних мережевих запитів:
-
-```
-# Через UI — поставити галочку "Dry-run" перед запуском скану
-# Або запустити тест:
-python -c "
-from app import create_app
-from app.modules.passive_osint import run_passive_osint
-app = create_app()
-with app.app_context():
-    result = run_passive_osint(app, 'example.com', dry_run=True, status={}, scan_path='/tmp')
-    import json; print(json.dumps(result, indent=2))
-"
-```
+Через UI — поставити галочку **Dry-run** перед запуском.  
+Всі модулі повертають реалістичні фіктивні дані без мережевих запитів.
 
 ---
 
@@ -260,11 +260,10 @@ with app.app_context():
 | Помилка | Причина | Рішення |
 |---------|---------|---------|
 | `nmap not found` | nmap не встановлено | `sudo apt install nmap` |
-| `shodan.APIError: Access denied` | Shodan free plan обмежений | Скан продовжиться без Shodan |
-| `VirusTotal rate limit` | Перевищено 4 req/min | Почекати хвилину, або використати dry-run |
+| `Shodan APIError` | Shodan free plan обмежений | Скан продовжиться без Shodan |
+| `VirusTotal rate limit` | > 4 req/min | Почекати або dry-run |
 | `ModuleNotFoundError` | Залежності не встановлено | `pip install -r requirements.txt` |
-| `VIRUSTOTAL_API_KEY not set` | `.env` не заповнено | `cp .env.example .env` + додати ключі |
-| Scan застрягає на прогресі | Помилка у фоновому потоці | Перевірити `scans/<id>/error.log` |
+| Scan застрягає | Помилка у фоновому потоці | `scans/<id>/error.log` |
 
 ---
 
@@ -273,8 +272,8 @@ with app.app_context():
 > **Важливо:** Цей інструмент призначений виключно для тестування власних або  
 > авторизованих систем. Використання проти чужих систем без дозволу є незаконним.
 
-- Активний режим (`Full scan`) надсилає пакети напряму до цілі — використовуйте тільки з письмового дозволу власника
-- Passive режим використовує тільки публічні API — ціль не дізнається про факт збору
+- **Active / Full режим** — надсилає пакети до цілі, використовуйте тільки з дозволу власника
+- **Passive режим** — тільки публічні API, ціль не дізнається про факт збору
 
 ---
 
@@ -286,8 +285,8 @@ with app.app_context():
 | Шаблони | Jinja2 |
 | Frontend | Bootstrap 5 (dark), Bootstrap Icons |
 | Пасивний OSINT | `requests`, `shodan`, `python-whois` |
-| Активне сканування | `python-nmap`, `ssl`, `socket`, `dnspython` |
+| Активне сканування | `python-nmap`, `ssl`, `socket` |
 | CVE/CVSS | NVD REST API v2.0 |
-| ATT&CK маппінг | власний rule engine (без зовнішніх бібліотек) |
+| ATT&CK маппінг | власний rule engine |
 | Зберігання | JSON-файли (без БД) |
-| Конкурентність | `threading.Thread` |
+| Конкурентність | `threading.Thread` + `concurrent.futures` |

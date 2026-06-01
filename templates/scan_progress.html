@@ -53,6 +53,7 @@
         "cve_lookup":    ("CVE Lookup",    "NVD API · CVSS scoring"),
         "mitre_mapper":  ("MITRE ATT&CK",  "Automatic technique mapping"),
       } %}
+      {# Filter out skipped modules from display #}
       {% for key, (name, desc) in labels.items() %}
       {% set st = status.modules.get(key, 'pending') %}
       {% set icon, cls = icons.get(st, ("bi-circle", "module-status-pending")) %}

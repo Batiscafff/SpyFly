@@ -27,7 +27,35 @@ def _is_ip(target: str) -> bool:
 
 # ─── nmap ─────────────────────────────────────────────────────────────────────
 
-def run_nmap(target: str, dry_run: bool) -> dict:
+DEFAULT_PORTS = "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8080,8443,27017"
+
+
+def _sanitize_ports(ports: str) -> str:
+    import re
+    p = ports.strip()
+    if not p:
+        return DEFAULT_PORTS
+    if re.fullmatch(r'[\d,\-]+', p):
+        return p
+    return DEFAULT_PORTS
+
+
+def _count_ports_in_spec(spec: str) -> int:
+    total = 0
+    for part in spec.split(','):
+        part = part.strip()
+        if '-' in part:
+            try:
+                lo, hi = part.split('-', 1)
+                total += max(0, int(hi) - int(lo) + 1)
+            except ValueError:
+                pass
+        elif part.isdigit():
+            total += 1
+    return total
+
+
+def run_nmap(target: str, dry_run: bool, ports: str = "") -> dict:
     if dry_run:
         return {
             "ports": [
@@ -38,23 +66,21 @@ def run_nmap(target: str, dry_run: bool) -> dict:
             "os_guess": "Linux 5.4",
         }
 
+    ports_spec = _sanitize_ports(ports)
     try:
         import nmap as nmap_lib
         nm = nmap_lib.PortScanner()
-        nm.scan(
-            target,
-            arguments="-sV -T4 -p 21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8080,8443,27017",
-        )
+        nm.scan(target, arguments=f"-sV -T4 -p {ports_spec}")
 
         if target not in nm.all_hosts():
-            return {"ports": [], "os_guess": None}
+            return {"ports": [], "os_guess": None, "ports_spec": ports_spec}
 
         host = nm[target]
-        ports = []
+        port_list = []
         for proto in host.all_protocols():
-            for port, data in sorted(host[proto].items()):
-                ports.append({
-                    "port": port,
+            for port_num, data in sorted(host[proto].items()):
+                port_list.append({
+                    "port": port_num,
                     "protocol": proto,
                     "state": data["state"],
                     "service": data["name"],
@@ -67,9 +93,17 @@ def run_nmap(target: str, dry_run: bool) -> dict:
         if host.get("osmatch"):
             os_guess = host["osmatch"][0]["name"]
 
-        return {"ports": ports, "os_guess": os_guess}
+        total_scanned = _count_ports_in_spec(ports_spec)
+        not_shown = max(0, total_scanned - len(port_list))
+        return {
+            "ports": port_list,
+            "os_guess": os_guess,
+            "ports_spec": ports_spec,
+            "total_scanned": total_scanned,
+            "not_shown_closed": not_shown,
+        }
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": str(exc), "ports_spec": ports_spec}
 
 
 # ─── SSL / TLS ────────────────────────────────────────────────────────────────
@@ -202,10 +236,10 @@ def run_dns_brute(domain: str, dry_run: bool) -> dict:
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
-def run_active_scan(app, target: str, dry_run: bool) -> dict:
+def run_active_scan(app, target: str, dry_run: bool, ports: str = "") -> dict:
     results: dict = {}
 
-    results["nmap"] = run_nmap(target, dry_run)
+    results["nmap"] = run_nmap(target, dry_run, ports)
     time.sleep(0.2)
 
     results["ssl"] = run_ssl_check(target, dry_run)

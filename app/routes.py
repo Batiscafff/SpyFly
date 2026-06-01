@@ -17,12 +17,13 @@ def start_scan():
     target = request.form.get("target", "").strip()
     scan_mode = request.form.get("scan_mode", "passive")
     dry_run = bool(request.form.get("dry_run"))
+    ports = request.form.get("ports", "").strip()
 
     if not target:
         flash("Target is required.", "danger")
         return redirect(url_for("main.index"))
 
-    scan_id = scanner.start_scan(current_app._get_current_object(), target, scan_mode, dry_run)
+    scan_id = scanner.start_scan(current_app._get_current_object(), target, scan_mode, dry_run, ports)
     return redirect(url_for("main.scan_page", scan_id=scan_id))
 
 

@@ -65,7 +65,7 @@ def delete_scan(app, scan_id: str):
 
 # ─── Runner ───────────────────────────────────────────────────────────────────
 
-def start_scan(app, target: str, scan_mode: str, dry_run: bool) -> str:
+def start_scan(app, target: str, scan_mode: str, dry_run: bool, ports: str = "") -> str:
     scan_id = str(uuid.uuid4())
     scan_path = _scan_dir(app, scan_id)
 
@@ -73,15 +73,16 @@ def start_scan(app, target: str, scan_mode: str, dry_run: bool) -> str:
         "id": scan_id,
         "target": target,
         "scan_mode": scan_mode,
+        "ports": ports,
         "dry_run": dry_run,
         "status": "queued",
         "progress": 0,
         "current_module": None,
         "modules": {
-            "passive_osint": "pending",
-            "active_scan": "pending" if scan_mode == "full" else "skipped",
-            "cve_lookup": "pending",
-            "mitre_mapper": "pending",
+            "passive_osint": "pending" if scan_mode in ("passive", "full") else "skipped",
+            "active_scan":   "pending" if scan_mode in ("active",  "full") else "skipped",
+            "cve_lookup":    "pending",
+            "mitre_mapper":  "pending",
         },
         "started_at": datetime.utcnow().isoformat(),
         "finished_at": None,
@@ -122,28 +123,32 @@ def _run_scan(app, scan_id: str, scan_path: Path, status: dict):
         target = status["target"]
         dry_run = status["dry_run"]
         scan_mode = status["scan_mode"]
+        ports = status.get("ports", "")
         results: dict = {"target": target, "scan_mode": scan_mode}
 
-        # ── 1. Passive OSINT ──────────────────────────────────────────────
-        _update(scan_path, status,
-                modules={**status["modules"], "passive_osint": "running"},
-                progress=10, current_module="Passive OSINT")
+        # ── 1. Passive OSINT (passive / full) ────────────────────────────
+        if scan_mode in ("passive", "full"):
+            _update(scan_path, status,
+                    modules={**status["modules"], "passive_osint": "running"},
+                    progress=10, current_module="Passive OSINT")
 
-        from app.modules.passive_osint import run_passive_osint
-        results["passive_osint"] = run_passive_osint(app, target, dry_run, status, scan_path)
+            from app.modules.passive_osint import run_passive_osint
+            results["passive_osint"] = run_passive_osint(app, target, dry_run, status, scan_path)
 
-        _update(scan_path, status,
-                modules={**status["modules"], "passive_osint": "done"},
-                progress=40, current_module="Passive OSINT done")
+            _update(scan_path, status,
+                    modules={**status["modules"], "passive_osint": "done"},
+                    progress=40, current_module="Passive OSINT done")
+        else:
+            results["passive_osint"] = None
 
-        # ── 2. Active scan (full mode only) ───────────────────────────────
-        if scan_mode == "full":
+        # ── 2. Active scan (active / full) ────────────────────────────────
+        if scan_mode in ("active", "full"):
             _update(scan_path, status,
                     modules={**status["modules"], "active_scan": "running"},
                     progress=45, current_module="Active Scan (nmap)")
 
             from app.modules.active_scan import run_active_scan
-            results["active_scan"] = run_active_scan(app, target, dry_run)
+            results["active_scan"] = run_active_scan(app, target, dry_run, ports)
 
             _update(scan_path, status,
                     modules={**status["modules"], "active_scan": "done"},
