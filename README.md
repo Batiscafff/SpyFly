@@ -13,11 +13,12 @@ Flask-застосунок для автоматизованої OSINT-розв�
 
 | Модуль | Що робить |
 |--------|-----------|
-| **Passive OSINT** | Shodan, VirusTotal, AbuseIPDB, crt.sh, WHOIS — без прямого контакту з ціллю |
+| **Passive OSINT** | Shodan, VirusTotal, AbuseIPDB, crt.sh, WHOIS, URLScan.io — без прямого контакту з ціллю |
 | **Active Scan** | nmap (порти + версії сервісів), SSL/TLS аналіз, DNS brute-force |
 | **CVE Lookup** | NVD API v2 — пошук CVE для знайдених версій ПЗ + CVSS-скоринг |
 | **MITRE ATT&CK** | Автоматичний маппінг знахідок на техніки матриці ATT&CK |
-| **HTML Report** | Структурований dark-theme звіт, скачується як самодостатній HTML |
+| **Hash Check** | Перевірка MD5/SHA-1/SHA-256 через VirusTotal; одиночна та batch-перевірка з файлу |
+| **HTML Report** | Структурований dark-theme звіт зі скріншотом сайту та посиланнями на зовнішні ресурси |
 
 ---
 
@@ -52,6 +53,7 @@ VIRUSTOTAL_API_KEY=ваш_ключ     # https://www.virustotal.com
 SHODAN_API_KEY=ваш_ключ         # https://account.shodan.io
 ABUSEIPDB_API_KEY=ваш_ключ      # https://www.abuseipdb.com
 NVD_API_KEY=                    # https://nvd.nist.gov/developers (опційно)
+URLSCAN_API_KEY=                # https://urlscan.io/user/ (опційно — без ключа пошук по існуючим сканам, з ключем — tech stack + нові скани)
 ```
 
 `settings.json` має пріоритет над `.env`. Без ключів модулі повертають
@@ -90,7 +92,7 @@ python run.py
   - змішано: `22,80,8000-9000`
 - **Dry-run** — демо-режим з фіктивними даними, без реальних запитів
 
-**Hash** — перевірка хешів файлів *(в розробці)*.
+**Hash** — перевірка хешу файлу через VirusTotal (MD5, SHA-1, SHA-256). Підтримує одиночну перевірку та batch-завантаження `.txt`-файлу з хешами (один на рядок). Результати оновлюються в реальному часі; при rate limit автоматично очікує 16 секунд.
 
 ### 2. Прогрес сканування
 
@@ -104,12 +106,18 @@ python run.py
 | Секція | Passive | Active | Full |
 |--------|:-------:|:------:|:----:|
 | Summary bar | ✓ | ✓ | ✓ |
-| Shodan / VT / AbuseIPDB / WHOIS / crt.sh | ✓ | — | ✓ |
+| Shodan | ✓ | — | ✓ |
+| VirusTotal / AbuseIPDB | ✓ | — | ✓ |
+| WHOIS | ✓ | — | ✓ |
+| URLScan.io (вердикт, tech stack, скріншот) | ✓ | — | ✓ |
+| crt.sh subdomains | ✓ | — | ✓ |
 | Nmap ports (open / closed / not shown) | — | ✓ | ✓ |
 | SSL/TLS certificate | — | ✓ | ✓ |
 | DNS Brute-force | — | ✓ | ✓ |
 | CVE Findings | ✓ | ✓ | ✓ |
 | MITRE ATT&CK | ✓ | ✓ | ✓ |
+
+Кожна OSINT-картка у звіті містить посилання на відповідний зовнішній ресурс (Shodan, VirusTotal, AbuseIPDB, who.is, crt.sh, URLScan).
 
 Кнопка **Download HTML** зберігає повністю автономний HTML-файл зі вбудованими стилями.
 
@@ -170,6 +178,7 @@ SpyFly/
 | `POST` | `/scan` | Запуск нового скану |
 | `GET` | `/scan/<id>` | Прогрес або звіт |
 | `GET` | `/api/scan/<id>/status` | JSON статус (JS polling) |
+| `GET` | `/api/hash?hash=<hex>&dry_run=0` | Перевірка хешу через VirusTotal |
 | `GET` | `/report/<id>` | Скачати автономний HTML-звіт |
 | `POST` | `/scan/<id>/delete` | Видалити один скан |
 | `POST` | `/scans/delete-bulk` | Масове видалення (JSON `{"ids":[...]}`) |
@@ -206,15 +215,19 @@ SpyFly/
 
 ### passive_osint.py
 
-| Функція | API | Rate limit |
-|---------|-----|-----------|
-| `run_shodan()` | Shodan REST API | — |
-| `run_virustotal()` | VirusTotal API v3 | 4 req/min |
-| `run_abuseipdb()` | AbuseIPDB API v2 | 1000 req/day |
-| `run_crtsh()` | crt.sh JSON API | — |
-| `run_whois()` | python-whois | — |
+| Функція | API | Rate limit | Потребує ключ |
+|---------|-----|-----------|:---:|
+| `run_shodan()` | Shodan REST API | — | ✓ |
+| `run_virustotal()` | VirusTotal API v3 | 4 req/min | ✓ |
+| `run_abuseipdb()` | AbuseIPDB API v2 | 1000 req/day | ✓ |
+| `run_whois()` | python-whois | — | — |
+| `run_urlscan()` | URLScan.io API v1 | — | Опційно* |
+| `run_crtsh()` | crt.sh JSON API | — | — |
+| `lookup_hash_virustotal()` | VirusTotal API v3 `/files` | 4 req/min | ✓ |
 
 `run_shodan()` і `run_whois()` огорнуті в `concurrent.futures.ThreadPoolExecutor` з timeout=15s.
+
+\* URLScan без ключа: пошук по існуючим публічним сканам. З ключем: також отримує tech stack (Wappalyzer) та може запускати нові скани.
 
 ### active_scan.py
 
@@ -285,6 +298,7 @@ Rule engine без зовнішніх залежностей, 12 правил:
 | Шаблони | Jinja2 |
 | Frontend | Bootstrap 5 (dark), Bootstrap Icons |
 | Пасивний OSINT | `requests`, `shodan`, `python-whois` |
+| Web-аналіз | URLScan.io API (пошук + Wappalyzer) |
 | Активне сканування | `python-nmap`, `ssl`, `socket` |
 | CVE/CVSS | NVD REST API v2.0 |
 | ATT&CK маппінг | власний rule engine |
