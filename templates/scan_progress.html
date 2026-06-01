@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Scan — {{ status.target }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-lg-7">
+
+  <div class="sf-card p-4">
+    <div class="d-flex align-items-center gap-3 mb-4" id="header-running">
+      <div class="spinner-border text-info" role="status" style="width:1.4rem;height:1.4rem;" id="scan-spinner"></div>
+      <div>
+        <h5 class="mb-0 fw-bold">Scanning <code>{{ status.target }}</code></h5>
+        <small class="sf-muted">{{ status.scan_mode }} mode
+          {% if status.dry_run %}&bull; <span style="color:var(--sf-warning);">dry-run</span>{% endif %}
+        </small>
+      </div>
+    </div>
+
+    <!-- Error box (hidden by default, shown by JS on error) -->
+    <div id="error-box" class="d-none mb-3 p-3 rounded"
+         style="background:rgba(248,81,73,0.1);border:1px solid var(--sf-danger);">
+      <div class="fw-semibold mb-1" style="color:var(--sf-danger);">
+        <i class="bi bi-x-circle me-2"></i>Scan failed
+      </div>
+      <div id="error-message" class="sf-muted" style="font-size:.85rem;word-break:break-all;"></div>
+      <div class="mt-2">
+        <a href="/" class="btn btn-sm btn-outline-secondary">Back to dashboard</a>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="mb-1 d-flex justify-content-between" style="font-size:.8rem;">
+      <span class="sf-muted" id="current-module">{{ status.current_module or 'Initializing...' }}</span>
+      <span class="sf-muted" id="progress-pct">{{ status.progress }}%</span>
+    </div>
+    <div class="sf-progress mb-4">
+      <div class="sf-progress-bar" id="progress-bar" style="width:{{ status.progress }}%;"></div>
+    </div>
+
+    <!-- Module list -->
+    <div class="sf-section-label mb-3">Modules</div>
+    <div id="module-list">
+      {% set icons = {
+        "done":    ("bi-check-circle-fill", "module-status-done"),
+        "running": ("bi-arrow-repeat",      "module-status-running spin"),
+        "pending": ("bi-circle",            "module-status-pending"),
+        "skipped": ("bi-dash-circle",       "module-status-pending"),
+        "error":   ("bi-x-circle-fill",     "module-status-error"),
+      } %}
+      {% set labels = {
+        "passive_osint": ("Passive OSINT", "Shodan · VirusTotal · AbuseIPDB · crt.sh · WHOIS"),
+        "active_scan":   ("Active Scan",   "nmap · SSL · DNS brute-force"),
+        "cve_lookup":    ("CVE Lookup",    "NVD API · CVSS scoring"),
+        "mitre_mapper":  ("MITRE ATT&CK",  "Automatic technique mapping"),
+      } %}
+      {% for key, (name, desc) in labels.items() %}
+      {% set st = status.modules.get(key, 'pending') %}
+      {% set icon, cls = icons.get(st, ("bi-circle", "module-status-pending")) %}
+      <div class="d-flex align-items-center gap-3 py-2 border-bottom" style="border-color:var(--sf-border)!important;"
+           id="mod-{{ key }}">
+        <i class="bi {{ icon }} {{ cls }}" style="font-size:1.1rem;width:20px;text-align:center;"></i>
+        <div>
+          <div class="fw-semibold" style="font-size:.9rem;">{{ name }}</div>
+          <div class="sf-muted" style="font-size:.75rem;">{{ desc }}</div>
+        </div>
+        <span class="ms-auto badge rounded-pill"
+              style="background:rgba(255,255,255,0.07);color:var(--sf-muted);font-size:.7rem;">
+          {{ st }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-4 text-center sf-muted" style="font-size:.8rem;" id="scan-started">
+      Started {{ status.started_at[:16].replace('T',' ') if status.started_at else '' }} UTC
+    </div>
+  </div>
+
+</div>
+</div>
+
+<style>
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scan_progress.js') }}"></script>
+<script>
+  startPolling("{{ status.id }}", "{{ url_for('main.scan_page', scan_id=status.id) }}");
+</script>
+{% endblock %}

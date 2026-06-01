@@ -1,0 +1,204 @@
+:root {
+  --sf-bg: #0d1117;
+  --sf-surface: #161b22;
+  --sf-border: #30363d;
+  --sf-accent: #58a6ff;
+  --sf-accent2: #3fb950;
+  --sf-danger: #f85149;
+  --sf-warning: #d29922;
+  --sf-muted: #8b949e;
+  --sf-text: #e6edf3;
+}
+
+body {
+  background-color: var(--sf-bg);
+  color: var(--sf-text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Navbar */
+.sf-navbar {
+  background-color: var(--sf-surface);
+  border-bottom: 1px solid var(--sf-border);
+}
+
+.sf-brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--sf-accent) !important;
+}
+
+/* Cards */
+.sf-card {
+  background-color: var(--sf-surface);
+  border: 1px solid var(--sf-border);
+  border-radius: 8px;
+}
+
+.sf-card-header {
+  background-color: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--sf-border);
+  padding: 12px 18px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sf-muted);
+}
+
+/* Scan form */
+.sf-scan-form {
+  background: linear-gradient(135deg, #161b22 0%, #1a2030 100%);
+  border: 1px solid var(--sf-border);
+  border-radius: 10px;
+  padding: 2rem;
+}
+
+.sf-scan-form .form-control,
+.sf-scan-form .form-select {
+  background-color: #0d1117;
+  border-color: var(--sf-border);
+  color: var(--sf-text);
+}
+
+.sf-scan-form .form-control:focus,
+.sf-scan-form .form-select:focus {
+  background-color: #0d1117;
+  border-color: var(--sf-accent);
+  color: var(--sf-text);
+  box-shadow: 0 0 0 0.2rem rgba(88, 166, 255, 0.15);
+}
+
+.sf-scan-form .form-control::placeholder {
+  color: var(--sf-muted);
+}
+
+/* Buttons */
+.btn-sf-primary {
+  background-color: var(--sf-accent);
+  border-color: var(--sf-accent);
+  color: #0d1117;
+  font-weight: 600;
+}
+
+.btn-sf-primary:hover {
+  background-color: #79b8ff;
+  border-color: #79b8ff;
+  color: #0d1117;
+}
+
+/* Severity badges */
+.badge-critical { background-color: #7d2020; color: #ffa0a0; border: 1px solid #f85149; }
+.badge-high     { background-color: #5a2f0a; color: #ffb347; border: 1px solid #d29922; }
+.badge-medium   { background-color: #2a3a00; color: #c3e88d; border: 1px solid #3fb950; }
+.badge-low      { background-color: #1a2a3a; color: #8ab4f8; border: 1px solid #58a6ff; }
+.badge-info     { background-color: #1e2a3a; color: var(--sf-muted); border: 1px solid var(--sf-border); }
+
+/* Module status icons */
+.module-status-done    { color: var(--sf-accent2); }
+.module-status-running { color: var(--sf-accent); }
+.module-status-pending { color: var(--sf-muted); }
+.module-status-error   { color: var(--sf-danger); }
+
+/* Progress bar */
+.sf-progress {
+  background-color: var(--sf-border);
+  border-radius: 4px;
+  height: 8px;
+}
+
+.sf-progress-bar {
+  background: linear-gradient(90deg, var(--sf-accent), var(--sf-accent2));
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* Tables */
+.sf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.sf-table th {
+  background-color: rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--sf-border);
+  padding: 10px 14px;
+  color: var(--sf-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.sf-table td {
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  padding: 10px 14px;
+  vertical-align: middle;
+}
+
+.sf-table tr:hover td {
+  background-color: rgba(255,255,255,0.02);
+}
+
+/* Scan history card */
+.scan-card {
+  background-color: var(--sf-surface);
+  border: 1px solid var(--sf-border);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+}
+
+.scan-card:hover {
+  border-color: var(--sf-accent);
+}
+
+/* Status dots */
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.status-dot.running { background-color: var(--sf-accent); animation: pulse 1.2s infinite; }
+.status-dot.done    { background-color: var(--sf-accent2); }
+.status-dot.error   { background-color: var(--sf-danger); }
+.status-dot.queued  { background-color: var(--sf-muted); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ATT&CK technique link */
+.attck-link {
+  color: var(--sf-accent);
+  text-decoration: none;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.attck-link:hover { text-decoration: underline; color: #79b8ff; }
+
+/* Section label */
+.sf-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sf-muted);
+  margin-bottom: 0.5rem;
+}
+
+/* Muted text */
+.sf-muted { color: var(--sf-muted); }
+
+code {
+  color: #79b8ff;
+  background-color: rgba(88,166,255,0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}

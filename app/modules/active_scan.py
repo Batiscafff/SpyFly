@@ -1,0 +1,219 @@
+"""
+Active scanner module.
+Runs only when scan_mode == "full" (requires authorization).
+
+Functions:
+  run_nmap()      — port scan + service versions + OS guess
+  run_ssl_check() — certificate details, cipher, protocol version
+  run_dns_brute() — subdomain enumeration via built-in wordlist
+"""
+
+import ipaddress
+import socket
+import ssl
+import time
+from datetime import datetime
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _is_ip(target: str) -> bool:
+    try:
+        ipaddress.ip_address(target)
+        return True
+    except ValueError:
+        return False
+
+
+# ─── nmap ─────────────────────────────────────────────────────────────────────
+
+def run_nmap(target: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "ports": [
+                {"port": 22,  "protocol": "tcp", "state": "open", "service": "ssh",   "version": "OpenSSH 8.9p1"},
+                {"port": 80,  "protocol": "tcp", "state": "open", "service": "http",  "version": "nginx 1.18.0"},
+                {"port": 443, "protocol": "tcp", "state": "open", "service": "https", "version": "nginx 1.18.0"},
+            ],
+            "os_guess": "Linux 5.4",
+        }
+
+    try:
+        import nmap as nmap_lib
+        nm = nmap_lib.PortScanner()
+        nm.scan(
+            target,
+            arguments="-sV -T4 -p 21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8080,8443,27017",
+        )
+
+        if target not in nm.all_hosts():
+            return {"ports": [], "os_guess": None}
+
+        host = nm[target]
+        ports = []
+        for proto in host.all_protocols():
+            for port, data in sorted(host[proto].items()):
+                ports.append({
+                    "port": port,
+                    "protocol": proto,
+                    "state": data["state"],
+                    "service": data["name"],
+                    "version": (
+                        f"{data.get('product', '')} {data.get('version', '')}".strip() or None
+                    ),
+                })
+
+        os_guess = None
+        if host.get("osmatch"):
+            os_guess = host["osmatch"][0]["name"]
+
+        return {"ports": ports, "os_guess": os_guess}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ─── SSL / TLS ────────────────────────────────────────────────────────────────
+
+def run_ssl_check(target: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "subject": {"commonName": target, "organizationName": "Example Inc."},
+            "issuer": {"commonName": "Let's Encrypt Authority X3", "organizationName": "Let's Encrypt"},
+            "not_before": "2025-01-01",
+            "not_after": "2025-04-01",
+            "expired": False,
+            "days_remaining": 120,
+            "protocol": "TLSv1.3",
+            "cipher": "TLS_AES_256_GCM_SHA384",
+            "san": [target, f"www.{target}"],
+        }
+
+    hostname = target if not _is_ip(target) else target
+    try:
+        ctx = ssl.create_default_context()
+        # Allow IP addresses (skip hostname verification for IPs)
+        if _is_ip(target):
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+        with ctx.wrap_socket(
+            socket.create_connection((hostname, 443), timeout=10),
+            server_hostname=None if _is_ip(target) else hostname,
+        ) as s:
+            cert = s.getpeercert()
+            cipher_info = s.cipher()
+            protocol = s.version()
+
+        not_before = cert.get("notBefore", "")
+        not_after = cert.get("notAfter", "")
+
+        # Parse expiry
+        days_remaining = None
+        expired = False
+        try:
+            expiry_dt = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+            delta = expiry_dt - datetime.utcnow()
+            days_remaining = delta.days
+            expired = delta.days < 0
+        except Exception:
+            pass
+
+        # Subject / Issuer as dicts
+        def _rdns(rdns_list):
+            d = {}
+            for part in rdns_list:
+                for k, v in part:
+                    d[k] = v
+            return d
+
+        subject = _rdns(cert.get("subject", []))
+        issuer = _rdns(cert.get("issuer", []))
+
+        # SAN
+        san = []
+        for type_, value in cert.get("subjectAltName", []):
+            if type_ == "DNS":
+                san.append(value)
+
+        return {
+            "subject": subject,
+            "issuer": issuer,
+            "not_before": not_before,
+            "not_after": not_after,
+            "expired": expired,
+            "days_remaining": days_remaining,
+            "protocol": protocol,
+            "cipher": cipher_info[0] if cipher_info else None,
+            "san": san[:20],
+        }
+    except ssl.SSLError as exc:
+        return {"error": f"SSL error: {exc}"}
+    except (socket.timeout, ConnectionRefusedError, OSError) as exc:
+        return {"error": f"Connection failed: {exc}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ─── DNS brute-force ──────────────────────────────────────────────────────────
+
+DNS_WORDLIST = [
+    "www", "mail", "smtp", "pop", "imap", "ftp", "sftp",
+    "api", "app", "dev", "staging", "test", "prod", "beta",
+    "admin", "panel", "dashboard", "portal", "login", "auth",
+    "vpn", "remote", "ssh", "git", "gitlab", "github", "jira",
+    "confluence", "wiki", "docs", "blog", "shop", "store",
+    "cdn", "static", "assets", "media", "img", "images",
+    "ns1", "ns2", "dns1", "dns2", "mx", "mx1", "mx2",
+    "webmail", "owa", "autodiscover", "exchange",
+    "monitor", "nagios", "grafana", "kibana", "elastic",
+    "jenkins", "ci", "build", "deploy",
+    "db", "database", "mysql", "postgres", "redis", "mongo",
+    "backup", "files", "upload", "download",
+    "mobile", "m", "wap", "status", "health",
+    "internal", "intranet", "corp", "vpn2", "remote2",
+]
+
+
+def run_dns_brute(domain: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "found": [
+                {"subdomain": f"www.{domain}", "ip": "1.2.3.4"},
+                {"subdomain": f"api.{domain}", "ip": "1.2.3.5"},
+                {"subdomain": f"mail.{domain}", "ip": "1.2.3.6"},
+            ],
+            "total_checked": len(DNS_WORDLIST),
+        }
+
+    if _is_ip(domain):
+        return {"error": "DNS brute-force requires a domain, not an IP"}
+
+    found = []
+    for word in DNS_WORDLIST:
+        fqdn = f"{word}.{domain}"
+        try:
+            ip = socket.gethostbyname(fqdn)
+            found.append({"subdomain": fqdn, "ip": ip})
+        except socket.gaierror:
+            pass
+
+    return {"found": found, "total_checked": len(DNS_WORDLIST)}
+
+
+# ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+def run_active_scan(app, target: str, dry_run: bool) -> dict:
+    results: dict = {}
+
+    results["nmap"] = run_nmap(target, dry_run)
+    time.sleep(0.2)
+
+    results["ssl"] = run_ssl_check(target, dry_run)
+    time.sleep(0.2)
+
+    if not _is_ip(target):
+        results["dns_brute"] = run_dns_brute(target, dry_run)
+    else:
+        results["dns_brute"] = None
+
+    return results

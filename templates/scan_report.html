@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+{% block title %}Report — {{ status.target }}{% endblock %}
+
+{% set passive = results.passive_osint or {} %}
+{% set active  = results.active_scan or {} %}
+{% set cve_all = [] %}
+{% for svc in (results.cve_lookup or []) %}
+  {% for c in svc.cves %}{% set _ = cve_all.append(c) %}{% endfor %}
+{% endfor %}
+{% set mitre = results.mitre or [] %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+  <div>
+    <h4 class="fw-bold mb-1">
+      <i class="bi bi-file-earmark-text me-2" style="color:var(--sf-accent);"></i>
+      Scan Report: <code>{{ status.target }}</code>
+    </h4>
+    <small class="sf-muted">
+      {{ status.scan_mode }} mode
+      {% if status.dry_run %}&bull; <span style="color:var(--sf-warning);">dry-run</span>{% endif %}
+      &bull; {{ status.started_at[:16].replace('T',' ') if status.started_at else '' }} UTC
+      &bull; Finished {{ status.finished_at[:16].replace('T',' ') if status.finished_at else '—' }} UTC
+    </small>
+  </div>
+  <a href="/report/{{ status.id }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-download me-1"></i>Download HTML
+  </a>
+</div>
+
+<!-- ── Summary bar ────────────────────────────────────────────────────────── -->
+{% set open_ports = [] %}
+{% if active.nmap and active.nmap.ports %}
+  {% for p in active.nmap.ports %}{% if p.state == 'open' %}{% set _ = open_ports.append(p) %}{% endif %}{% endfor %}
+{% endif %}
+{% set shodan_ports = (passive.shodan or {}).get('ports', []) %}
+
+<div class="row g-3 mb-4">
+  {% set stats = [
+    ("bi-broadcast", (open_ports|length or shodan_ports|length)|string, "Open Ports", "var(--sf-accent)"),
+    ("bi-bug",       status.cve_count|string,                        "CVEs Found",  "var(--sf-danger)"),
+    ("bi-crosshair", mitre|length|string,                            "ATT&CK Techniques", "#c3e88d"),
+    ("bi-diagram-3", (passive.crtsh.domains|length if passive.crtsh and passive.crtsh.domains else 0)|string, "Subdomains", "var(--sf-muted)"),
+  ] %}
+  {% for icon, val, label, color in stats %}
+  <div class="col-6 col-md-3">
+    <div class="sf-card p-3 text-center">
+      <i class="bi {{ icon }}" style="font-size:1.5rem;color:{{ color }};"></i>
+      <div style="font-size:1.8rem;font-weight:700;color:{{ color }};">{{ val }}</div>
+      <div class="sf-muted" style="font-size:.75rem;">{{ label }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-4">
+
+<!-- LEFT COLUMN ─────────────────────────────────────────────────────────── -->
+<div class="col-12 col-xl-7">
+
+  <!-- Shodan -->
+  {% if passive.shodan %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header"><i class="bi bi-cloud-check me-2"></i>Shodan</div>
+    <div class="p-3">
+    {% if passive.shodan.error %}
+      <div class="sf-muted">{{ passive.shodan.error }}</div>
+    {% else %}
+      <div class="row g-2" style="font-size:.875rem;">
+        {% for k,v in [("Org", passive.shodan.org),("ISP", passive.shodan.isp),
+                       ("Country", passive.shodan.country),("City", passive.shodan.city),
+                       ("OS", passive.shodan.os),("Last seen", passive.shodan.last_update)] %}
+        {% if v %}
+        <div class="col-6">
+          <span class="sf-muted">{{ k }}:</span>
+          <span class="ms-1 fw-semibold">{{ v }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% if passive.shodan.ports %}
+        <div class="col-12">
+          <span class="sf-muted">Ports:</span>
+          {% for p in passive.shodan.ports[:20] %}
+          <code class="ms-1">{{ p }}</code>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if passive.shodan.vulns %}
+        <div class="col-12 mt-1">
+          <span class="sf-muted">Shodan CVEs:</span>
+          {% for v in passive.shodan.vulns %}
+          <a href="https://nvd.nist.gov/vuln/detail/{{ v }}" target="_blank" class="ms-1 attck-link">{{ v }}</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% if passive.shodan.banners %}
+      <details class="mt-2">
+        <summary class="sf-muted" style="cursor:pointer;font-size:.8rem;">
+          Service banners ({{ passive.shodan.banners|length }})
+        </summary>
+        <pre style="background:#0d1117;padding:10px;border-radius:6px;font-size:.78rem;color:#8ab4f8;overflow:auto;max-height:180px;margin-top:8px;">{% for b in passive.shodan.banners %}Port {{ b.port }}: {{ b.banner[:250] }}
+{% endfor %}</pre>
+      </details>
+      {% endif %}
+    {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- VirusTotal + AbuseIPDB side by side -->
+  <div class="row g-3 mb-4">
+    {% if passive.virustotal %}
+    <div class="col-12 col-sm-6">
+      <div class="sf-card h-100">
+        <div class="sf-card-header"><i class="bi bi-shield-check me-2"></i>VirusTotal</div>
+        <div class="p-3">
+        {% if passive.virustotal.error %}
+          <div class="sf-muted">{{ passive.virustotal.error }}</div>
+        {% else %}
+          {% set mal = passive.virustotal.malicious %}
+          <div class="mb-2">
+            {% if mal > 5 %}
+            <span class="badge badge-critical px-3 py-2">MALICIOUS {{ mal }}/{{ passive.virustotal.total_engines }}</span>
+            {% elif mal > 0 %}
+            <span class="badge badge-high px-3 py-2">SUSPICIOUS {{ mal }}/{{ passive.virustotal.total_engines }}</span>
+            {% else %}
+            <span class="badge badge-medium px-3 py-2">CLEAN 0/{{ passive.virustotal.total_engines }}</span>
+            {% endif %}
+          </div>
+          <div style="font-size:.82rem;">
+            <div><span class="sf-muted">Reputation:</span> <span class="fw-semibold">{{ passive.virustotal.reputation }}</span></div>
+            <div><span class="sf-muted">Country:</span> <span class="fw-semibold">{{ passive.virustotal.country or '—' }}</span></div>
+            <div><span class="sf-muted">AS Owner:</span> <span class="fw-semibold">{{ passive.virustotal.as_owner or '—' }}</span></div>
+          </div>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if passive.abuseipdb %}
+    <div class="col-12 col-sm-6">
+      <div class="sf-card h-100">
+        <div class="sf-card-header"><i class="bi bi-exclamation-triangle me-2"></i>AbuseIPDB</div>
+        <div class="p-3">
+        {% if passive.abuseipdb.error %}
+          <div class="sf-muted">{{ passive.abuseipdb.error }}</div>
+        {% else %}
+          {% set score = passive.abuseipdb.score %}
+          <div class="mb-2">
+            {% if score > 50 %}
+            <span class="badge badge-critical px-3 py-2">ABUSE {{ score }}%</span>
+            {% elif score > 10 %}
+            <span class="badge badge-high px-3 py-2">SUSPECT {{ score }}%</span>
+            {% else %}
+            <span class="badge badge-medium px-3 py-2">CLEAN {{ score }}%</span>
+            {% endif %}
+          </div>
+          <div style="font-size:.82rem;">
+            <div><span class="sf-muted">Reports:</span> <span class="fw-semibold">{{ passive.abuseipdb.total_reports }}</span></div>
+            <div><span class="sf-muted">Users:</span> <span class="fw-semibold">{{ passive.abuseipdb.num_distinct_users }}</span></div>
+            <div><span class="sf-muted">ISP:</span> <span class="fw-semibold">{{ passive.abuseipdb.isp or '—' }}</span></div>
+          </div>
+        {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- WHOIS -->
+  {% if passive.whois and not passive.whois.error %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header"><i class="bi bi-info-circle me-2"></i>WHOIS</div>
+    <div class="p-3" style="font-size:.875rem;">
+      <div class="row g-2">
+        {% for k,v in [("Registrar", passive.whois.registrar),("Org", passive.whois.org),
+                       ("Created", passive.whois.creation_date),("Expires", passive.whois.expiration_date)] %}
+        {% if v %}
+        <div class="col-6">
+          <span class="sf-muted">{{ k }}:</span> <span class="fw-semibold">{{ v }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% if passive.whois.name_servers %}
+        <div class="col-12">
+          <span class="sf-muted">Name servers:</span>
+          {% for ns in passive.whois.name_servers %}<code class="ms-1">{{ ns }}</code>{% endfor %}
+        </div>
+        {% endif %}
+        {% if passive.whois.emails %}
+        <div class="col-12">
+          <span class="sf-muted">Emails:</span>
+          {% for e in passive.whois.emails %}<code class="ms-1">{{ e }}</code>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- crt.sh subdomains -->
+  {% if passive.crtsh and passive.crtsh.domains %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-diagram-3 me-2"></i>crt.sh Subdomains
+      <span class="badge rounded-pill ms-2" style="background:rgba(255,255,255,0.1);color:var(--sf-muted);font-size:.7rem;">
+        {{ passive.crtsh.domains|length }}
+      </span>
+    </div>
+    <div class="p-3">
+      <table class="sf-table">
+        <thead><tr><th>Subdomain</th><th>Issuer</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for s in passive.crtsh.domains[:40] %}
+          <tr>
+            <td><code>{{ s.name }}</code></td>
+            <td class="sf-muted" style="font-size:.78rem;">{{ s.issuer[:50] }}</td>
+            <td class="sf-muted" style="font-size:.78rem;">{{ s.not_before }}</td>
+          </tr>
+          {% endfor %}
+          {% if passive.crtsh.domains|length > 40 %}
+          <tr><td colspan="3" class="sf-muted" style="font-size:.8rem;">
+            ... and {{ passive.crtsh.domains|length - 40 }} more
+          </td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- /left -->
+
+<!-- RIGHT COLUMN ─────────────────────────────────────────────────────────── -->
+<div class="col-12 col-xl-5">
+
+  <!-- Active scan: nmap -->
+  {% if active.nmap %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header"><i class="bi bi-broadcast me-2"></i>Nmap Port Scan</div>
+    <div class="p-3">
+    {% if active.nmap.error %}
+      <div class="sf-muted">{{ active.nmap.error }}</div>
+    {% elif active.nmap.ports %}
+      {% if active.nmap.os_guess %}
+      <div class="mb-2" style="font-size:.82rem;">
+        <span class="sf-muted">OS guess:</span>
+        <span class="fw-semibold">{{ active.nmap.os_guess }}</span>
+      </div>
+      {% endif %}
+      <table class="sf-table">
+        <thead><tr><th>Port</th><th>Service</th><th>Version</th><th>State</th></tr></thead>
+        <tbody>
+          {% for p in active.nmap.ports %}
+          <tr>
+            <td><code>{{ p.port }}/{{ p.protocol }}</code></td>
+            <td>{{ p.service }}</td>
+            <td class="sf-muted" style="font-size:.78rem;">{{ p.version or '—' }}</td>
+            <td>
+              {% if p.state == 'open' %}
+              <span style="color:var(--sf-danger);font-size:.78rem;">● open</span>
+              {% else %}
+              <span class="sf-muted" style="font-size:.78rem;">{{ p.state }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="sf-muted">No open ports found.</div>
+    {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- SSL -->
+  {% if active.ssl %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header"><i class="bi bi-lock me-2"></i>SSL / TLS Certificate</div>
+    <div class="p-3">
+    {% if active.ssl.error %}
+      <div class="sf-muted">{{ active.ssl.error }}</div>
+    {% else %}
+      <div style="font-size:.875rem;">
+        {% if active.ssl.expired %}
+        <div class="mb-2">
+          <span class="badge badge-critical px-2 py-1">
+            <i class="bi bi-exclamation-circle me-1"></i>EXPIRED
+          </span>
+        </div>
+        {% elif active.ssl.days_remaining is not none and active.ssl.days_remaining < 30 %}
+        <div class="mb-2">
+          <span class="badge badge-high px-2 py-1">Expires in {{ active.ssl.days_remaining }} days</span>
+        </div>
+        {% else %}
+        <div class="mb-2">
+          <span class="badge badge-medium px-2 py-1">Valid · {{ active.ssl.days_remaining }} days remaining</span>
+        </div>
+        {% endif %}
+        {% for k,v in [("Subject CN", active.ssl.subject.get('commonName') if active.ssl.subject else None),
+                       ("Issuer", active.ssl.issuer.get('organizationName') if active.ssl.issuer else None),
+                       ("Expires", active.ssl.not_after),
+                       ("Protocol", active.ssl.protocol),
+                       ("Cipher", active.ssl.cipher)] %}
+        {% if v %}
+        <div><span class="sf-muted">{{ k }}:</span> <span class="fw-semibold">{{ v }}</span></div>
+        {% endif %}
+        {% endfor %}
+        {% if active.ssl.san %}
+        <div><span class="sf-muted">SAN:</span>
+          {% for s in active.ssl.san[:5] %}<code class="ms-1">{{ s }}</code>{% endfor %}
+          {% if active.ssl.san|length > 5 %}<span class="sf-muted ms-1">+{{ active.ssl.san|length - 5 }}</span>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- DNS brute -->
+  {% if active.dns_brute and active.dns_brute.found %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-search me-2"></i>DNS Brute-Force
+      <span class="badge rounded-pill ms-2" style="background:rgba(255,255,255,0.1);color:var(--sf-muted);font-size:.7rem;">
+        {{ active.dns_brute.found|length }} / {{ active.dns_brute.total_checked }} checked
+      </span>
+    </div>
+    <div class="p-3">
+      <table class="sf-table">
+        <thead><tr><th>Subdomain</th><th>IP</th></tr></thead>
+        <tbody>
+          {% for d in active.dns_brute.found %}
+          <tr>
+            <td><code>{{ d.subdomain }}</code></td>
+            <td class="sf-muted">{{ d.ip }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- /right -->
+</div><!-- /row -->
+
+<!-- ── CVE Table (full width) ─────────────────────────────────────────────── -->
+{% if results.cve_lookup %}
+<div class="sf-card mb-4">
+  <div class="sf-card-header">
+    <i class="bi bi-bug me-2"></i>CVE Findings
+    <span class="badge rounded-pill ms-2"
+          style="background:rgba(248,81,73,0.15);color:var(--sf-danger);font-size:.7rem;">
+      {{ status.cve_count }} CVE{{ 's' if status.cve_count != 1 }}
+    </span>
+  </div>
+  <div class="p-3">
+  {% for svc in results.cve_lookup %}
+    {% if svc.cves %}
+    <div class="mb-3">
+      <div class="mb-2" style="font-size:.82rem;">
+        <span class="fw-semibold">{{ svc.service }}</span>
+        <code class="ms-1">{{ svc.version }}</code>
+        {% if svc.port %}<span class="sf-muted ms-1">port {{ svc.port }}</span>{% endif %}
+      </div>
+      <table class="sf-table">
+        <thead><tr><th>CVE</th><th>Score</th><th>Severity</th><th>Description</th><th>Published</th></tr></thead>
+        <tbody>
+          {% for cve in svc.cves %}
+          <tr>
+            <td>
+              <a href="{{ cve.url }}" target="_blank" class="attck-link">{{ cve.id }}</a>
+            </td>
+            <td class="fw-semibold" style="color:
+              {%- if cve.severity == 'CRITICAL' %}var(--sf-danger)
+              {%- elif cve.severity == 'HIGH' %}var(--sf-warning)
+              {%- elif cve.severity == 'MEDIUM' %}var(--sf-accent2)
+              {%- else %}var(--sf-muted){% endif %};">
+              {{ cve.score }}
+            </td>
+            <td><span class="badge badge-{{ cve.severity|lower }}">{{ cve.severity }}</span></td>
+            <td class="sf-muted" style="font-size:.78rem;max-width:380px;">
+              {{ cve.description[:200] }}{% if cve.description|length > 200 %}…{% endif %}
+            </td>
+            <td class="sf-muted" style="font-size:.78rem;">{{ cve.published }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  {% endfor %}
+  {% if status.cve_count == 0 %}
+  <div class="sf-muted">No CVEs found for identified services.</div>
+  {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── MITRE ATT&CK ────────────────────────────────────────────────────────── -->
+<div class="sf-card mb-4">
+  <div class="sf-card-header">
+    <i class="bi bi-crosshair me-2"></i>MITRE ATT&CK Mapping
+    {% if mitre %}
+    <span class="badge rounded-pill ms-2"
+          style="background:rgba(195,232,141,0.15);color:#c3e88d;font-size:.7rem;">
+      {{ mitre|length }} technique{{ 's' if mitre|length != 1 }}
+    </span>
+    {% endif %}
+  </div>
+  <div class="p-3">
+  {% if mitre %}
+    <table class="sf-table">
+      <thead><tr><th>Technique</th><th>Name</th><th>Tactic</th><th>Evidence</th></tr></thead>
+      <tbody>
+        {% for t in mitre %}
+        <tr>
+          <td>
+            <a href="{{ t.url }}" target="_blank" class="attck-link">{{ t.technique_id }}</a>
+          </td>
+          <td class="fw-semibold" style="font-size:.85rem;">{{ t.technique_name }}</td>
+          <td>
+            <span class="badge rounded-pill"
+                  style="background:rgba(88,166,255,0.12);color:var(--sf-accent);font-size:.72rem;">
+              {{ t.tactic_name }}
+            </span>
+          </td>
+          <td class="sf-muted" style="font-size:.78rem;">
+            {% for f in t.findings %}
+            <div>{{ f }}</div>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="sf-muted">No techniques mapped — insufficient data.</div>
+  {% endif %}
+  </div>
+</div>
+
+<footer class="sf-muted text-center py-3" style="font-size:.78rem;border-top:1px solid var(--sf-border);">
+  SpyFly &bull; {{ generated_at if generated_at else '' }} &bull; For authorized use only
+</footer>
+
+{% endblock %}

@@ -1,0 +1,5 @@
+.env
+scans/*
+reports/*
+__pycache__
+recon_tool_description.md
