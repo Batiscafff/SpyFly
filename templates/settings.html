@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Settings — SpyFly{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-lg-6">
+
+  <h4 class="fw-bold mb-1">
+    <i class="bi bi-gear me-2" style="color:var(--sf-accent);"></i>API Keys
+  </h4>
+  <p class="sf-muted mb-4" style="font-size:.875rem;">
+    Keys are stored in <code>settings.json</code> and override values from <code>.env</code>.
+    Leave a field blank to fall back to the <code>.env</code> value.
+  </p>
+
+  <form method="post">
+    {% set fields = [
+      ("SHODAN_API_KEY",      "Shodan",      "https://account.shodan.io",          "Passive OSINT — host info, banners, open ports"),
+      ("VIRUSTOTAL_API_KEY",  "VirusTotal",  "https://www.virustotal.com",         "Passive OSINT — IP reputation, malicious detections"),
+      ("ABUSEIPDB_API_KEY",   "AbuseIPDB",   "https://www.abuseipdb.com",          "Passive OSINT — abuse confidence score"),
+      ("NVD_API_KEY",         "NVD / NIST",  "https://nvd.nist.gov/developers",    "CVE lookup — increases rate limit to 50 req/30s"),
+    ] %}
+
+    {% for key, label, link, hint in fields %}
+    <div class="sf-card p-3 mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <label class="fw-semibold" for="{{ key }}" style="font-size:.9rem;">{{ label }}</label>
+        <a href="{{ link }}" target="_blank" class="sf-muted attck-link" style="font-size:.78rem;">
+          Get key <i class="bi bi-box-arrow-up-right ms-1"></i>
+        </a>
+      </div>
+      <div class="sf-muted mb-2" style="font-size:.78rem;">{{ hint }}</div>
+      <div class="input-group">
+        <input
+          type="password"
+          class="form-control sf-input"
+          id="{{ key }}"
+          name="{{ key }}"
+          value="{{ settings[key] }}"
+          placeholder="Paste key here…"
+          autocomplete="off"
+        >
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          onclick="toggleVisibility('{{ key }}')"
+          title="Show / hide"
+          style="border-color:var(--sf-border);color:var(--sf-muted);"
+        >
+          <i class="bi bi-eye" id="eye-{{ key }}"></i>
+        </button>
+      </div>
+      {% if settings[key] %}
+      <div class="mt-1" style="font-size:.75rem;color:#3fb950;">
+        <i class="bi bi-check-circle me-1"></i>Configured
+      </div>
+      {% else %}
+      <div class="mt-1 sf-muted" style="font-size:.75rem;">
+        <i class="bi bi-dash-circle me-1"></i>Not set — module will return an error but scan will continue
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="d-flex gap-2 mt-4">
+      <button type="submit" class="btn btn-primary px-4">
+        <i class="bi bi-floppy me-2"></i>Save
+      </button>
+      <a href="/" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleVisibility(id) {
+  const inp = document.getElementById(id);
+  const eye = document.getElementById('eye-' + id);
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    eye.className = 'bi bi-eye-slash';
+  } else {
+    inp.type = 'password';
+    eye.className = 'bi bi-eye';
+  }
+}
+</script>
+{% endblock %}

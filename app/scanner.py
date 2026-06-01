@@ -59,11 +59,8 @@ def list_scans(app) -> list[dict]:
 def delete_scan(app, scan_id: str):
     import shutil
     scan_path = Path(app.config["SCANS_DIR"]) / scan_id
-    report_path = Path(app.config["REPORTS_DIR"]) / f"{scan_id}.html"
     if scan_path.exists():
         shutil.rmtree(scan_path)
-    if report_path.exists():
-        report_path.unlink()
 
 
 # ─── Runner ───────────────────────────────────────────────────────────────────
@@ -183,9 +180,6 @@ def _run_scan(app, scan_id: str, scan_path: Path, status: dict):
                 progress=95, current_module="Mapping done",
                 attck_count=attck_count)
 
-        # ── 5. Generate HTML report ───────────────────────────────────────
-        _generate_html_report(app, scan_id, status, results)
-
         _write_results(scan_path, results)
         _update(scan_path, status,
                 status="done", progress=100, current_module=None,
@@ -216,16 +210,3 @@ def _extract_services(results: dict) -> list[dict]:
     return services
 
 
-def _generate_html_report(app, scan_id: str, status: dict, results: dict):
-    from jinja2 import Environment, FileSystemLoader
-    from pathlib import Path as P
-    templates_dir = P(app.root_path).parent / "templates"
-    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=True)
-    try:
-        tpl = env.get_template("scan_report.html")
-        html = tpl.render(status=status, results=results,
-                          generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))
-        report_path = P(app.config["REPORTS_DIR"]) / f"{scan_id}.html"
-        report_path.write_text(html, encoding="utf-8")
-    except Exception:
-        pass

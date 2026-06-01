@@ -15,7 +15,5 @@ class Config:
     NVD_API_KEY = os.getenv("NVD_API_KEY", "")
 
     SCANS_DIR = BASE_DIR / os.getenv("SCANS_DIR", "scans")
-    REPORTS_DIR = BASE_DIR / os.getenv("REPORTS_DIR", "reports")
 
     SCANS_DIR.mkdir(parents=True, exist_ok=True)
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)

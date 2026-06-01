@@ -5,88 +5,150 @@
 {% block content %}
 <div class="row g-4">
 
-  <!-- Scan form -->
+  <!-- Left panel: URL / Hash tabs -->
   <div class="col-12 col-xl-5">
-    <div class="sf-scan-form">
-      <div class="d-flex align-items-center mb-3">
-        <i class="bi bi-search me-2" style="color:var(--sf-accent);font-size:1.3rem;"></i>
-        <h5 class="mb-0 fw-bold">New Scan</h5>
-      </div>
 
-      <form action="/scan" method="POST">
-        <div class="mb-3">
-          <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
-            Target (IP or domain)
-          </label>
-          <input type="text" name="target" class="form-control form-control-lg"
-                 placeholder="192.168.1.1 or example.com" required autocomplete="off">
-        </div>
-
-        <div class="mb-4">
-          <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
-            Scan mode
-          </label>
-          <div class="d-flex gap-3">
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="scan_mode" id="modePassive"
-                     value="passive" checked>
-              <label class="form-check-label" for="modePassive">
-                <i class="bi bi-eye-slash me-1 sf-muted"></i>Passive
-                <small class="d-block sf-muted" style="font-size:.75rem;">API-only, no direct contact</small>
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="scan_mode" id="modeFull"
-                     value="full">
-              <label class="form-check-label" for="modeFull">
-                <i class="bi bi-lightning-charge me-1" style="color:var(--sf-warning);"></i>Full
-                <small class="d-block sf-muted" style="font-size:.75rem;">nmap + SSL + DNS brute</small>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="dry_run" id="dryRun">
-            <label class="form-check-label sf-muted" for="dryRun">
-              <i class="bi bi-bug me-1"></i>Dry-run (demo data, no real API calls)
-            </label>
-          </div>
-        </div>
-
-        <button type="submit" class="btn btn-sf-primary w-100 py-2">
-          <i class="bi bi-play-fill me-2"></i>Launch Scan
+    <!-- Tab switcher -->
+    <ul class="nav sf-tabs mb-3" id="toolTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-url" data-bs-toggle="tab"
+                data-bs-target="#pane-url" type="button" role="tab">
+          <i class="bi bi-globe2 me-2"></i>URL / IP
         </button>
-      </form>
-    </div>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-hash" data-bs-toggle="tab"
+                data-bs-target="#pane-hash" type="button" role="tab">
+          <i class="bi bi-fingerprint me-2"></i>Hash
+        </button>
+      </li>
+    </ul>
 
-    <!-- Quick info -->
-    <div class="mt-3 sf-card p-3">
-      <div class="sf-section-label mb-2">What gets collected</div>
-      <div class="row g-2">
-        {% set sources = [
-          ("bi-cloud-check", "Shodan", "Ports, banners, geo"),
-          ("bi-shield-check", "VirusTotal", "IP reputation"),
-          ("bi-exclamation-triangle", "AbuseIPDB", "Abuse score"),
-          ("bi-diagram-3", "crt.sh", "Subdomains"),
-          ("bi-info-circle", "WHOIS", "Registration info"),
-          ("bi-cpu", "NVD / CVE", "Known vulnerabilities"),
-          ("bi-crosshair", "MITRE ATT&CK", "Technique mapping"),
-        ] %}
-        {% for icon, name, desc in sources %}
-        <div class="col-6">
-          <div class="d-flex align-items-start gap-2" style="font-size:.82rem;">
-            <i class="bi {{ icon }} mt-1" style="color:var(--sf-accent);flex-shrink:0;"></i>
-            <div>
-              <div class="fw-semibold">{{ name }}</div>
-              <div class="sf-muted" style="font-size:.75rem;">{{ desc }}</div>
+    <div class="tab-content">
+
+      <!-- ── URL tab ───────────────────────────────────────── -->
+      <div class="tab-pane fade show active" id="pane-url" role="tabpanel">
+        <div class="sf-scan-form">
+          <form action="/scan" method="POST">
+            <div class="mb-3">
+              <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
+                Target (IP or domain)
+              </label>
+              <input type="text" name="target" class="form-control form-control-lg"
+                     placeholder="192.168.1.1 or example.com" required autocomplete="off">
             </div>
+
+            <div class="mb-4">
+              <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
+                Scan mode
+              </label>
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="scan_mode" id="modePassive"
+                         value="passive" checked>
+                  <label class="form-check-label" for="modePassive">
+                    <i class="bi bi-eye-slash me-1 sf-muted"></i>Passive
+                    <small class="d-block sf-muted" style="font-size:.75rem;">API-only, no direct contact</small>
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="scan_mode" id="modeFull"
+                         value="full">
+                  <label class="form-check-label" for="modeFull">
+                    <i class="bi bi-lightning-charge me-1" style="color:var(--sf-warning);"></i>Full
+                    <small class="d-block sf-muted" style="font-size:.75rem;">nmap + SSL + DNS brute</small>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="dry_run" id="dryRun">
+                <label class="form-check-label sf-muted" for="dryRun">
+                  <i class="bi bi-bug me-1"></i>Dry-run (demo data, no real API calls)
+                </label>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-sf-primary w-100 py-2">
+              <i class="bi bi-play-fill me-2"></i>Launch Scan
+            </button>
+          </form>
+        </div>
+
+        <!-- Quick info -->
+        <div class="mt-3 sf-card p-3">
+          <div class="sf-section-label mb-2">What gets collected</div>
+          <div class="row g-2">
+            {% set sources = [
+              ("bi-cloud-check", "Shodan", "Ports, banners, geo"),
+              ("bi-shield-check", "VirusTotal", "IP reputation"),
+              ("bi-exclamation-triangle", "AbuseIPDB", "Abuse score"),
+              ("bi-diagram-3", "crt.sh", "Subdomains"),
+              ("bi-info-circle", "WHOIS", "Registration info"),
+              ("bi-cpu", "NVD / CVE", "Known vulnerabilities"),
+              ("bi-crosshair", "MITRE ATT&CK", "Technique mapping"),
+            ] %}
+            {% for icon, name, desc in sources %}
+            <div class="col-6">
+              <div class="d-flex align-items-start gap-2" style="font-size:.82rem;">
+                <i class="bi {{ icon }} mt-1" style="color:var(--sf-accent);flex-shrink:0;"></i>
+                <div>
+                  <div class="fw-semibold">{{ name }}</div>
+                  <div class="sf-muted" style="font-size:.75rem;">{{ desc }}</div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
           </div>
         </div>
-        {% endfor %}
       </div>
-    </div>
+
+      <!-- ── Hash tab ──────────────────────────────────────── -->
+      <div class="tab-pane fade" id="pane-hash" role="tabpanel">
+        <div class="sf-scan-form">
+          <div class="d-flex align-items-center gap-2 mb-4 p-3 rounded"
+               style="background:rgba(88,166,255,0.06);border:1px dashed var(--sf-border);">
+            <i class="bi bi-tools" style="color:var(--sf-muted);font-size:1.3rem;"></i>
+            <div>
+              <div class="fw-semibold" style="font-size:.9rem;">Coming soon</div>
+              <div class="sf-muted" style="font-size:.78rem;">
+                File hash verification against VirusTotal, NSRL and local database.
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
+              Hash value
+            </label>
+            <input type="text" class="form-control form-control-lg" disabled
+                   placeholder="MD5, SHA-1 or SHA-256…" autocomplete="off">
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label sf-muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;">
+              Algorithm
+            </label>
+            <div class="d-flex gap-3">
+              {% for algo in ["MD5", "SHA-1", "SHA-256"] %}
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="hash_algo" disabled
+                       {% if algo == "SHA-256" %}checked{% endif %}>
+                <label class="form-check-label sf-muted">{{ algo }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-sf-primary w-100 py-2" disabled>
+            <i class="bi bi-search me-2"></i>Check Hash
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
   </div>
 
   <!-- Scan history -->

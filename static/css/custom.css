@@ -106,11 +106,13 @@ body {
   background-color: var(--sf-border);
   border-radius: 4px;
   height: 8px;
+  overflow: hidden;
 }
 
 .sf-progress-bar {
   background: linear-gradient(90deg, var(--sf-accent), var(--sf-accent2));
   border-radius: 4px;
+  height: 100%;
   transition: width 0.4s ease;
 }
 
@@ -201,4 +203,32 @@ code {
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 0.85em;
+}
+
+/* Dashboard tabs (URL / Hash) */
+.sf-tabs {
+  border-bottom: 1px solid var(--sf-border);
+  gap: 4px;
+}
+
+.sf-tabs .nav-link {
+  color: var(--sf-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px 6px 0 0;
+  padding: 8px 18px;
+  font-size: .875rem;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sf-tabs .nav-link:hover {
+  color: var(--sf-text);
+  border-color: var(--sf-border);
+}
+
+.sf-tabs .nav-link.active {
+  color: var(--sf-accent);
+  background-color: var(--sf-surface);
+  border-color: var(--sf-border) var(--sf-border) var(--sf-surface);
 }

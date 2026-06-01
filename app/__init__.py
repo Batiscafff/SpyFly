@@ -9,4 +9,7 @@ def create_app():
     from app.routes import bp
     app.register_blueprint(bp)
 
+    from app import settings_store
+    settings_store.load(app)
+
     return app

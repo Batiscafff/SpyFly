@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort, send_file, current_app, flash
+import re
+from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort, send_file, current_app, flash, Response
 from pathlib import Path
 from app import scanner
 
@@ -48,12 +49,49 @@ def scan_status_api(scan_id):
     return jsonify(status)
 
 
+def _make_standalone_html(app, scan_id: str) -> str:
+    """Render the report and inline custom.css so the file is self-contained."""
+    from datetime import datetime as _dt
+
+    status = scanner.read_status(app, scan_id)
+    results = scanner.read_results(app, scan_id)
+    if not status or status.get("status") != "done":
+        return ""
+
+    html = render_template(
+        "scan_report.html",
+        status=status,
+        results=results or {},
+        generated_at=_dt.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+    )
+
+    css_path = Path(app.root_path).parent / "static" / "css" / "custom.css"
+    if css_path.exists():
+        css = css_path.read_text(encoding="utf-8")
+        html = re.sub(
+            r'<link[^>]+custom\.css[^>]*/?>',
+            f'<style>\n{css}\n</style>',
+            html,
+        )
+
+    return html
+
+
 @bp.route("/report/<scan_id>")
 def download_report(scan_id):
-    report_path = Path(current_app.config["REPORTS_DIR"]) / f"{scan_id}.html"
-    if not report_path.exists():
+    app = current_app._get_current_object()
+    html = _make_standalone_html(app, scan_id)
+    if not html:
         abort(404)
-    return send_file(report_path, mimetype="text/html", as_attachment=False)
+
+    target = (scanner.read_status(app, scan_id) or {}).get("target", scan_id[:8])
+    filename = f"spyfly-{target}.html"
+
+    return Response(
+        html,
+        mimetype="text/html; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @bp.route("/scan/<scan_id>/delete", methods=["POST"])
@@ -61,3 +99,14 @@ def delete_scan(scan_id):
     scanner.delete_scan(current_app._get_current_object(), scan_id)
     flash("Scan deleted.", "info")
     return redirect(url_for("main.index"))
+
+
+@bp.route("/settings", methods=["GET", "POST"])
+def settings():
+    from app import settings_store
+    app = current_app._get_current_object()
+    if request.method == "POST":
+        settings_store.save(app, request.form.to_dict())
+        flash("Settings saved.", "success")
+        return redirect(url_for("main.settings"))
+    return render_template("settings.html", settings=settings_store.read(app))
