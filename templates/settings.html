@@ -19,6 +19,7 @@
       ("VIRUSTOTAL_API_KEY",  "VirusTotal",  "https://www.virustotal.com",         "Passive OSINT — IP reputation, malicious detections"),
       ("ABUSEIPDB_API_KEY",   "AbuseIPDB",   "https://www.abuseipdb.com",          "Passive OSINT — abuse confidence score"),
       ("NVD_API_KEY",         "NVD / NIST",  "https://nvd.nist.gov/developers",    "CVE lookup — increases rate limit to 50 req/30s"),
+      ("URLSCAN_API_KEY",    "URLScan.io",  "https://urlscan.io/user/",           "Passive OSINT — web page analysis, tech stack, malicious verdict. Without key: searches existing results only."),
     ] %}
 
     {% for key, label, link, hint in fields %}

@@ -13,6 +13,7 @@ class Config:
     SHODAN_API_KEY = os.getenv("SHODAN_API_KEY", "")
     ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY", "")
     NVD_API_KEY = os.getenv("NVD_API_KEY", "")
+    URLSCAN_API_KEY = os.getenv("URLSCAN_API_KEY", "")
 
     SCANS_DIR = BASE_DIR / os.getenv("SCANS_DIR", "scans")
 

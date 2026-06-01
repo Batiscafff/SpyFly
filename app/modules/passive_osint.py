@@ -237,6 +237,147 @@ def run_whois(target: str, dry_run: bool) -> dict:
         return {"error": str(exc)}
 
 
+# ─── URLScan.io ───────────────────────────────────────────────────────────────
+
+def _parse_urlscan_result(data: dict, uuid: str, source: str) -> dict:
+    page     = data.get("page", {})
+    task     = data.get("task", {})
+    verdicts = data.get("verdicts", {}).get("overall", {})
+    stats    = data.get("stats", {})
+
+    tech = []
+    for t in data.get("meta", {}).get("processors", {}).get("tech", {}).get("data", [])[:12]:
+        cats = [c.get("name", "") for c in t.get("categories", [])] if isinstance(t.get("categories"), list) else []
+        tech.append({"name": t.get("name", ""), "categories": cats})
+
+    scan_time = task.get("time", "")
+    try:
+        page_status = int(page.get("status")) if page.get("status") is not None else None
+    except (ValueError, TypeError):
+        page_status = None
+
+    return {
+        "scan_url":       f"https://urlscan.io/result/{uuid}/",
+        "screenshot_url": f"https://urlscan.io/screenshots/{uuid}.png" if uuid else None,
+        "scanned_url":    task.get("url", ""),
+        "scan_date":      scan_time[:10] if scan_time else None,
+        "page_title":     page.get("title", ""),
+        "page_status":    page_status,
+        "server":         page.get("server", ""),
+        "ip":             page.get("ip", ""),
+        "country":        page.get("country", ""),
+        "malicious":      verdicts.get("malicious", False),
+        "score":          verdicts.get("score", 0),
+        "tags":           verdicts.get("tags", []),
+        "tech":           tech,
+        "uniq_ips":       stats.get("uniqIPs"),
+        "uniq_domains":   stats.get("uniqDomains"),
+        "total_links":    stats.get("totalLinks"),
+        "source":         source,
+    }
+
+
+def run_urlscan(api_key: str, target: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "scan_url":       "https://urlscan.io/result/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/",
+            "screenshot_url": "https://urlscan.io/screenshots/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.png",
+            "scanned_url":    f"https://{target}",
+            "scan_date":      "2025-01-15",
+            "page_title":     "Example Domain",
+            "page_status":    200,
+            "server":         "nginx/1.18.0",
+            "ip":             "93.184.216.34",
+            "country":        "US",
+            "malicious":      False,
+            "score":          0,
+            "tags":           [],
+            "tech": [
+                {"name": "Nginx",     "categories": ["Web servers"]},
+                {"name": "Bootstrap", "categories": ["UI frameworks"]},
+                {"name": "jQuery",    "categories": ["JavaScript libraries"]},
+            ],
+            "uniq_ips":     4,
+            "uniq_domains": 6,
+            "total_links":  18,
+            "source":       "search",
+        }
+
+    headers = {"API-Key": api_key} if api_key else {}
+
+    # Step 1: search for existing scans (no API key needed)
+    query = f"ip:{target}" if _is_ip(target) else f"domain:{target}"
+    try:
+        search_resp = requests.get(
+            f"https://urlscan.io/api/v1/search/?q={query}&size=1",
+            headers=headers, timeout=15,
+        )
+        if search_resp.status_code == 429:
+            return {"error": "URLScan rate limit reached"}
+        search_resp.raise_for_status()
+        search_results = search_resp.json().get("results", [])
+    except Exception as exc:
+        return {"error": f"URLScan search failed: {exc}"}
+
+    if search_results:
+        item = search_results[0]
+        # API returns data directly; older responses wrapped it in "_source"
+        src  = item.get("_source") or item
+        uuid = src.get("task", {}).get("uuid", "")
+        # Fetch full result for tech stack data
+        full_data = src
+        if uuid:
+            try:
+                full_resp = requests.get(
+                    f"https://urlscan.io/api/v1/result/{uuid}/",
+                    headers=headers, timeout=10,
+                )
+                if full_resp.status_code == 200:
+                    full_data = full_resp.json()
+            except Exception:
+                pass
+        return _parse_urlscan_result(full_data, uuid, "search")
+
+    # Step 2: no existing results — submit new scan (requires API key)
+    if not api_key:
+        return {"error": "No URLScan results found. Configure URLSCAN_API_KEY to submit new scans."}
+
+    url_to_scan = f"http://{target}" if _is_ip(target) else f"https://{target}"
+    try:
+        sub_resp = requests.post(
+            "https://urlscan.io/api/v1/scan/",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"url": url_to_scan, "visibility": "public"},
+            timeout=15,
+        )
+        sub_resp.raise_for_status()
+        uuid = sub_resp.json().get("uuid", "")
+    except Exception as exc:
+        return {"error": f"URLScan submission failed: {exc}"}
+
+    if not uuid:
+        return {"error": "URLScan did not return a scan UUID"}
+
+    # Step 3: poll until result is ready (up to ~30s)
+    time.sleep(5)
+    for _ in range(5):
+        time.sleep(5)
+        try:
+            result_resp = requests.get(
+                f"https://urlscan.io/api/v1/result/{uuid}/",
+                headers=headers, timeout=15,
+            )
+            if result_resp.status_code == 200:
+                return _parse_urlscan_result(result_resp.json(), uuid, "submission")
+        except Exception:
+            pass
+
+    return {
+        "error": f"URLScan scan still processing — check urlscan.io/result/{uuid}/",
+        "scan_url": f"https://urlscan.io/result/{uuid}/",
+    }
+
+
 # ─── VirusTotal hash lookup ───────────────────────────────────────────────────
 
 def lookup_hash_virustotal(api_key: str, hash_value: str, dry_run: bool) -> dict:
@@ -323,12 +464,16 @@ def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path) 
     results["abuseipdb"] = run_abuseipdb(cfg.get("ABUSEIPDB_API_KEY", ""), ip, dry_run)
     time.sleep(0.2)
 
-    _upd("WHOIS", 30)
+    _upd("WHOIS", 28)
     results["whois"] = run_whois(target, dry_run)
     time.sleep(0.2)
 
+    _upd("URLScan.io", 33)
+    results["urlscan"] = run_urlscan(cfg.get("URLSCAN_API_KEY", ""), target, dry_run)
+    time.sleep(0.2)
+
     if is_domain:
-        _upd("crt.sh subdomains", 36)
+        _upd("crt.sh subdomains", 37)
         results["crtsh"] = run_crtsh(target, dry_run)
     else:
         results["crtsh"] = None

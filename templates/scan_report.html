@@ -202,6 +202,128 @@
   </div>
   {% endif %}
 
+  <!-- URLScan.io -->
+  {% if passive.urlscan %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-globe2 me-2"></i>URLScan.io
+      {% if passive.urlscan.scan_url and not passive.urlscan.error %}
+      <a href="{{ passive.urlscan.scan_url }}" target="_blank"
+         class="ms-2 fw-normal attck-link" style="text-transform:none;letter-spacing:0;font-size:.72rem;">
+        Full report <i class="bi bi-box-arrow-up-right ms-1"></i>
+      </a>
+      {% endif %}
+    </div>
+    <div class="p-3">
+    {% if passive.urlscan.error %}
+      <div class="sf-muted">{{ passive.urlscan.error }}</div>
+      {% if passive.urlscan.scan_url %}
+      <div class="mt-1">
+        <a href="{{ passive.urlscan.scan_url }}" target="_blank" class="attck-link" style="font-size:.82rem;">
+          View pending result <i class="bi bi-box-arrow-up-right ms-1"></i>
+        </a>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="mb-2 d-flex align-items-center gap-2 flex-wrap">
+        {% if passive.urlscan.malicious %}
+        <span class="badge badge-critical px-3 py-2">
+          <i class="bi bi-shield-x me-1"></i>MALICIOUS · Score {{ passive.urlscan.score }}
+        </span>
+        {% elif passive.urlscan.score > 0 %}
+        <span class="badge badge-high px-3 py-2">
+          <i class="bi bi-shield-exclamation me-1"></i>SUSPICIOUS · Score {{ passive.urlscan.score }}
+        </span>
+        {% else %}
+        <span class="badge badge-medium px-3 py-2">
+          <i class="bi bi-shield-check me-1"></i>CLEAN · Score 0
+        </span>
+        {% endif %}
+        {% if passive.urlscan.source == 'submission' %}
+        <span class="badge rounded-pill" style="background:rgba(88,166,255,0.1);color:var(--sf-muted);font-size:.68rem;">
+          fresh scan
+        </span>
+        {% endif %}
+      </div>
+
+      {% if passive.urlscan.tags %}
+      <div class="mb-2">
+        {% for tag in passive.urlscan.tags %}
+        <span class="badge me-1" style="background:rgba(248,81,73,0.12);color:var(--sf-danger);font-size:.72rem;">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="row g-2 mb-2" style="font-size:.875rem;">
+        {% for k,v in [("Title",   passive.urlscan.page_title),
+                       ("Server",  passive.urlscan.server),
+                       ("Status",  passive.urlscan.page_status),
+                       ("IP",      passive.urlscan.ip),
+                       ("Country", passive.urlscan.country),
+                       ("Scanned", passive.urlscan.scan_date)] %}
+        {% if v %}
+        <div class="col-6">
+          <span class="sf-muted">{{ k }}:</span>
+          <span class="ms-1 fw-semibold">{{ v }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+      {% if passive.urlscan.uniq_ips or passive.urlscan.uniq_domains or passive.urlscan.total_links %}
+      <div class="row g-2 mb-3 text-center">
+        {% if passive.urlscan.uniq_ips %}
+        <div class="col-4">
+          <div class="fw-semibold">{{ passive.urlscan.uniq_ips }}</div>
+          <div class="sf-muted" style="font-size:.72rem;">Unique IPs</div>
+        </div>
+        {% endif %}
+        {% if passive.urlscan.uniq_domains %}
+        <div class="col-4">
+          <div class="fw-semibold">{{ passive.urlscan.uniq_domains }}</div>
+          <div class="sf-muted" style="font-size:.72rem;">Domains</div>
+        </div>
+        {% endif %}
+        {% if passive.urlscan.total_links %}
+        <div class="col-4">
+          <div class="fw-semibold">{{ passive.urlscan.total_links }}</div>
+          <div class="sf-muted" style="font-size:.72rem;">Links</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if passive.urlscan.tech %}
+      <div class="mb-3">
+        <div class="sf-section-label mb-2">Detected Technologies</div>
+        {% for t in passive.urlscan.tech %}
+        <span class="badge me-1 mb-1"
+              style="background:rgba(88,166,255,0.1);color:var(--sf-accent);font-size:.75rem;">
+          {{ t.name }}
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if passive.urlscan.screenshot_url %}
+      <div class="urlscan-screenshot-wrap">
+        <div class="sf-section-label mb-2">Screenshot</div>
+        <a href="{{ passive.urlscan.scan_url or passive.urlscan.screenshot_url }}" target="_blank"
+           title="Open full URLScan report">
+          <img
+            src="{{ passive.urlscan.screenshot_url }}"
+            alt="Page screenshot from URLScan.io"
+            style="width:100%;border-radius:6px;border:1px solid var(--sf-border);display:block;"
+            onerror="this.closest('.urlscan-screenshot-wrap').style.display='none';"
+          >
+        </a>
+      </div>
+      {% endif %}
+    {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- crt.sh subdomains -->
   {% if passive.crtsh and passive.crtsh.domains %}
   <div class="sf-card mb-4">
