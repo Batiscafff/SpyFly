@@ -239,16 +239,22 @@ def run_whois(target: str, dry_run: bool) -> dict:
 
 # ─── URLScan.io ───────────────────────────────────────────────────────────────
 
-def _parse_urlscan_result(data: dict, uuid: str, source: str) -> dict:
+def _parse_urlscan_result(data: dict, uuid: str, source: str, screenshot_override: str = "") -> dict:
     page     = data.get("page", {})
     task     = data.get("task", {})
     verdicts = data.get("verdicts", {}).get("overall", {})
     stats    = data.get("stats", {})
 
     tech = []
-    for t in data.get("meta", {}).get("processors", {}).get("tech", {}).get("data", [])[:12]:
-        cats = [c.get("name", "") for c in t.get("categories", [])] if isinstance(t.get("categories"), list) else []
-        tech.append({"name": t.get("name", ""), "categories": cats})
+    for t in data.get("meta", {}).get("processors", {}).get("wappa", {}).get("data", [])[:30]:
+        raw_cats = t.get("categories", [])
+        cats = [c.get("name", "") for c in raw_cats if isinstance(c, dict)] if isinstance(raw_cats, list) else []
+        tech.append({
+            "name":       t.get("app", "") or t.get("name", ""),
+            "website":    t.get("website", ""),
+            "categories": cats,
+            "category":   cats[0] if cats else "Other",
+        })
 
     scan_time = task.get("time", "")
     try:
@@ -256,9 +262,13 @@ def _parse_urlscan_result(data: dict, uuid: str, source: str) -> dict:
     except (ValueError, TypeError):
         page_status = None
 
+    screenshot = screenshot_override or data.get("screenshot", "") or (
+        f"https://urlscan.io/screenshots/{uuid}.png" if uuid else ""
+    )
+
     return {
         "scan_url":       f"https://urlscan.io/result/{uuid}/",
-        "screenshot_url": f"https://urlscan.io/screenshots/{uuid}.png" if uuid else None,
+        "screenshot_url": screenshot or None,
         "scanned_url":    task.get("url", ""),
         "scan_date":      scan_time[:10] if scan_time else None,
         "page_title":     page.get("title", ""),
@@ -266,6 +276,11 @@ def _parse_urlscan_result(data: dict, uuid: str, source: str) -> dict:
         "server":         page.get("server", ""),
         "ip":             page.get("ip", ""),
         "country":        page.get("country", ""),
+        "asn":            page.get("asnname", "") or page.get("asn", ""),
+        "language":       page.get("language", ""),
+        "tls_issuer":     page.get("tlsIssuer", ""),
+        "tls_valid_days": page.get("tlsValidDays"),
+        "requests":       stats.get("requests"),
         "malicious":      verdicts.get("malicious", False),
         "score":          verdicts.get("score", 0),
         "tags":           verdicts.get("tags", []),
@@ -293,9 +308,12 @@ def run_urlscan(api_key: str, target: str, dry_run: bool) -> dict:
             "score":          0,
             "tags":           [],
             "tech": [
-                {"name": "Nginx",     "categories": ["Web servers"]},
-                {"name": "Bootstrap", "categories": ["UI frameworks"]},
-                {"name": "jQuery",    "categories": ["JavaScript libraries"]},
+                {"name": "Nginx",       "website": "https://nginx.org",          "categories": ["Web servers"],           "category": "Web servers"},
+                {"name": "WordPress",   "website": "https://wordpress.org",      "categories": ["CMS", "Blogs"],          "category": "CMS"},
+                {"name": "PHP",         "website": "https://php.net",            "categories": ["Programming languages"], "category": "Programming languages"},
+                {"name": "jQuery",      "website": "https://jquery.com",         "categories": ["JavaScript libraries"],  "category": "JavaScript libraries"},
+                {"name": "Bootstrap",   "website": "https://getbootstrap.com",   "categories": ["UI frameworks"],         "category": "UI frameworks"},
+                {"name": "Google Analytics", "website": "https://analytics.google.com", "categories": ["Analytics"],     "category": "Analytics"},
             ],
             "uniq_ips":     4,
             "uniq_domains": 6,
@@ -323,10 +341,13 @@ def run_urlscan(api_key: str, target: str, dry_run: bool) -> dict:
         item = search_results[0]
         # API returns data directly; older responses wrapped it in "_source"
         src  = item.get("_source") or item
-        uuid = src.get("task", {}).get("uuid", "")
-        # Fetch full result for tech stack data
+        uuid = src.get("_id") or src.get("task", {}).get("uuid", "")
+        # Screenshot URL is provided directly in search results
+        screenshot = src.get("screenshot", "")
+
+        # Full result (tech stack) requires auth — only fetch if API key is present
         full_data = src
-        if uuid:
+        if api_key and uuid:
             try:
                 full_resp = requests.get(
                     f"https://urlscan.io/api/v1/result/{uuid}/",
@@ -336,7 +357,7 @@ def run_urlscan(api_key: str, target: str, dry_run: bool) -> dict:
                     full_data = full_resp.json()
             except Exception:
                 pass
-        return _parse_urlscan_result(full_data, uuid, "search")
+        return _parse_urlscan_result(full_data, uuid, "search", screenshot_override=screenshot)
 
     # Step 2: no existing results — submit new scan (requires API key)
     if not api_key:

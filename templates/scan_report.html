@@ -63,7 +63,15 @@
   <!-- Shodan -->
   {% if passive.shodan %}
   <div class="sf-card mb-4">
-    <div class="sf-card-header"><i class="bi bi-cloud-check me-2"></i>Shodan</div>
+    <div class="sf-card-header">
+      <i class="bi bi-cloud-check me-2"></i>Shodan
+      {% if passive.ip %}
+      <a href="https://www.shodan.io/host/{{ passive.ip }}" target="_blank"
+         class="ms-2 fw-normal attck-link" style="text-transform:none;letter-spacing:0;font-size:.72rem;">
+        View on Shodan <i class="bi bi-box-arrow-up-right ms-1"></i>
+      </a>
+      {% endif %}
+    </div>
     <div class="p-3">
     {% if passive.shodan.error %}
       <div class="sf-muted">{{ passive.shodan.error }}</div>
@@ -115,7 +123,15 @@
     {% if passive.virustotal %}
     <div class="col-12 col-sm-6">
       <div class="sf-card h-100">
-        <div class="sf-card-header"><i class="bi bi-shield-check me-2"></i>VirusTotal</div>
+        <div class="sf-card-header">
+          <i class="bi bi-shield-check me-2"></i>VirusTotal
+          {% if passive.ip %}
+          <a href="https://www.virustotal.com/gui/ip-address/{{ passive.ip }}" target="_blank"
+             class="ms-2 fw-normal attck-link" style="text-transform:none;letter-spacing:0;font-size:.72rem;">
+            View <i class="bi bi-box-arrow-up-right ms-1"></i>
+          </a>
+          {% endif %}
+        </div>
         <div class="p-3">
         {% if passive.virustotal.error %}
           <div class="sf-muted">{{ passive.virustotal.error }}</div>
@@ -144,7 +160,15 @@
     {% if passive.abuseipdb %}
     <div class="col-12 col-sm-6">
       <div class="sf-card h-100">
-        <div class="sf-card-header"><i class="bi bi-exclamation-triangle me-2"></i>AbuseIPDB</div>
+        <div class="sf-card-header">
+          <i class="bi bi-exclamation-triangle me-2"></i>AbuseIPDB
+          {% if passive.ip %}
+          <a href="https://www.abuseipdb.com/check/{{ passive.ip }}" target="_blank"
+             class="ms-2 fw-normal attck-link" style="text-transform:none;letter-spacing:0;font-size:.72rem;">
+            View <i class="bi bi-box-arrow-up-right ms-1"></i>
+          </a>
+          {% endif %}
+        </div>
         <div class="p-3">
         {% if passive.abuseipdb.error %}
           <div class="sf-muted">{{ passive.abuseipdb.error }}</div>
@@ -174,7 +198,13 @@
   <!-- WHOIS -->
   {% if passive.whois and not passive.whois.error %}
   <div class="sf-card mb-4">
-    <div class="sf-card-header"><i class="bi bi-info-circle me-2"></i>WHOIS</div>
+    <div class="sf-card-header">
+      <i class="bi bi-info-circle me-2"></i>WHOIS
+      <a href="https://who.is/whois/{{ status.target }}" target="_blank"
+         class="ms-2 fw-normal attck-link" style="text-transform:none;letter-spacing:0;font-size:.72rem;">
+        View on who.is <i class="bi bi-box-arrow-up-right ms-1"></i>
+      </a>
+    </div>
     <div class="p-3" style="font-size:.875rem;">
       <div class="row g-2">
         {% for k,v in [("Registrar", passive.whois.registrar),("Org", passive.whois.org),
@@ -255,12 +285,17 @@
       {% endif %}
 
       <div class="row g-2 mb-2" style="font-size:.875rem;">
-        {% for k,v in [("Title",   passive.urlscan.page_title),
-                       ("Server",  passive.urlscan.server),
-                       ("Status",  passive.urlscan.page_status),
-                       ("IP",      passive.urlscan.ip),
-                       ("Country", passive.urlscan.country),
-                       ("Scanned", passive.urlscan.scan_date)] %}
+        {% for k,v in [("Title",      passive.urlscan.page_title),
+                       ("Server",     passive.urlscan.server),
+                       ("Status",     passive.urlscan.page_status),
+                       ("IP",         passive.urlscan.ip),
+                       ("Country",    passive.urlscan.country),
+                       ("Language",   passive.urlscan.language),
+                       ("ASN",        passive.urlscan.asn),
+                       ("TLS issuer", passive.urlscan.tls_issuer),
+                       ("TLS valid",  (passive.urlscan.tls_valid_days | string + " days") if passive.urlscan.tls_valid_days else None),
+                       ("Requests",   passive.urlscan.requests),
+                       ("Scanned",    passive.urlscan.scan_date)] %}
         {% if v %}
         <div class="col-6">
           <span class="sf-muted">{{ k }}:</span>
@@ -293,17 +328,50 @@
       </div>
       {% endif %}
 
-      {% if passive.urlscan.tech %}
       <div class="mb-3">
         <div class="sf-section-label mb-2">Detected Technologies</div>
-        {% for t in passive.urlscan.tech %}
-        <span class="badge me-1 mb-1"
-              style="background:rgba(88,166,255,0.1);color:var(--sf-accent);font-size:.75rem;">
-          {{ t.name }}
-        </span>
-        {% endfor %}
+        {% if passive.urlscan.tech %}
+        <table class="sf-table">
+          <thead>
+            <tr>
+              <th>Technology</th>
+              <th>Category</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat, items in passive.urlscan.tech | groupby('category') %}
+              {% for t in items %}
+              <tr>
+                <td>
+                  {% if t.website %}
+                  <a href="{{ t.website }}" target="_blank" class="attck-link fw-semibold" style="font-size:.875rem;">
+                    {{ t.name }}
+                  </a>
+                  {% else %}
+                  <span class="fw-semibold" style="font-size:.875rem;">{{ t.name }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% for cat_name in t.categories %}
+                  <span class="badge rounded-pill{% if not loop.first %} ms-1{% endif %}"
+                        style="background:rgba(63,185,80,0.1);color:var(--sf-accent2);font-size:.7rem;">
+                    {{ cat_name }}
+                  </span>
+                  {% endfor %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="sf-muted" style="font-size:.82rem;">
+          <i class="bi bi-lock me-1"></i>Tech detection requires
+          <a href="/settings" class="attck-link">URLSCAN_API_KEY</a>
+          — the full result endpoint is authenticated.
+        </div>
+        {% endif %}
       </div>
-      {% endif %}
 
       {% if passive.urlscan.screenshot_url %}
       <div class="urlscan-screenshot-wrap">
@@ -332,6 +400,10 @@
       <span class="badge rounded-pill ms-2" style="background:rgba(255,255,255,0.1);color:var(--sf-muted);font-size:.7rem;">
         {{ passive.crtsh.domains|length }}
       </span>
+      <a href="https://crt.sh/?q=%.{{ status.target }}" target="_blank"
+         class="ms-2 fw-normal attck-link" style="text-transform:none;letter-spacing:0;font-size:.72rem;">
+        View on crt.sh <i class="bi bi-box-arrow-up-right ms-1"></i>
+      </a>
     </div>
     <div class="p-3">
       <table class="sf-table">
