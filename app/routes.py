@@ -101,6 +101,15 @@ def delete_scan(scan_id):
     return redirect(url_for("main.index"))
 
 
+@bp.route("/scans/delete-bulk", methods=["POST"])
+def delete_bulk():
+    app = current_app._get_current_object()
+    ids = request.get_json(silent=True) or {}
+    for scan_id in ids.get("ids", []):
+        scanner.delete_scan(app, scan_id)
+    return jsonify({"ok": True})
+
+
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
     from app import settings_store

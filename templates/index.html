@@ -158,15 +158,42 @@
         <i class="bi bi-clock-history me-2" style="color:var(--sf-muted);"></i>Scan History
       </h5>
       {% if scans %}
-      <small class="sf-muted">{{ scans|length }} scan{{ 's' if scans|length != 1 }}</small>
+      <div class="d-flex align-items-center gap-2">
+        <small class="sf-muted">{{ scans|length }} scan{{ 's' if scans|length != 1 }}</small>
+        <div class="form-check mb-0" title="Select all">
+          <input class="form-check-input" type="checkbox" id="selectAll">
+          <label class="form-check-label sf-muted" for="selectAll" style="font-size:.8rem;">All</label>
+        </div>
+      </div>
       {% endif %}
+    </div>
+
+    <!-- Bulk action toolbar (hidden until selection) -->
+    <div id="bulk-toolbar" class="d-none mb-3 p-2 px-3 rounded d-flex align-items-center gap-3"
+         style="background:rgba(248,81,73,0.08);border:1px solid var(--sf-danger);">
+      <span class="sf-muted" style="font-size:.875rem;">
+        <span id="selected-count">0</span> selected
+      </span>
+      <button id="btn-delete-selected" class="btn btn-sm btn-danger ms-auto">
+        <i class="bi bi-trash me-1"></i>Delete selected
+      </button>
+      <button id="btn-cancel-select" class="btn btn-sm btn-outline-secondary">
+        Cancel
+      </button>
     </div>
 
     {% if scans %}
       {% for scan in scans %}
-      <div class="scan-card p-3 mb-3">
-        <div class="d-flex align-items-start justify-content-between">
-          <div>
+      <div class="scan-card p-3 mb-3" data-scan-id="{{ scan.id }}">
+        <div class="d-flex align-items-start gap-2">
+
+          <!-- Checkbox -->
+          <div class="pt-1" style="flex-shrink:0;">
+            <input type="checkbox" class="form-check-input scan-checkbox" value="{{ scan.id }}">
+          </div>
+
+          <!-- Info -->
+          <div class="flex-grow-1 min-w-0">
             <div class="d-flex align-items-center gap-2 mb-1">
               <span class="status-dot {{ scan.status }}"></span>
               <span class="fw-semibold" style="font-size:1.05rem;">
@@ -187,7 +214,9 @@
               {% endif %}
             </div>
           </div>
-          <div class="d-flex gap-2 align-items-center">
+
+          <!-- Actions -->
+          <div class="d-flex gap-2 align-items-center" style="flex-shrink:0;">
             {% if scan.status == 'running' or scan.status == 'queued' %}
             <a href="/scan/{{ scan.id }}" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-hourglass-split me-1"></i>Progress
@@ -206,6 +235,7 @@
               </button>
             </form>
           </div>
+
         </div>
         {% if scan.status == 'running' %}
         <div class="mt-2">
@@ -226,4 +256,57 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const checkboxes  = () => [...document.querySelectorAll('.scan-checkbox')];
+  const checked     = () => checkboxes().filter(c => c.checked);
+  const toolbar     = document.getElementById('bulk-toolbar');
+  const countEl     = document.getElementById('selected-count');
+  const selectAll   = document.getElementById('selectAll');
+
+  if (!toolbar) return;
+
+  function syncToolbar() {
+    const n = checked().length;
+    countEl.textContent = n;
+    toolbar.classList.toggle('d-none', n === 0);
+    toolbar.classList.toggle('d-flex', n > 0);
+    if (selectAll) selectAll.indeterminate = n > 0 && n < checkboxes().length;
+    if (selectAll) selectAll.checked = n > 0 && n === checkboxes().length;
+  }
+
+  checkboxes().forEach(cb => cb.addEventListener('change', syncToolbar));
+
+  if (selectAll) {
+    selectAll.addEventListener('change', () => {
+      checkboxes().forEach(cb => { cb.checked = selectAll.checked; });
+      syncToolbar();
+    });
+  }
+
+  document.getElementById('btn-cancel-select').addEventListener('click', () => {
+    checkboxes().forEach(cb => { cb.checked = false; });
+    if (selectAll) selectAll.checked = false;
+    syncToolbar();
+  });
+
+  document.getElementById('btn-delete-selected').addEventListener('click', () => {
+    const ids = checked().map(c => c.value);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} scan${ids.length > 1 ? 's' : ''}?`)) return;
+
+    fetch('/scans/delete-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    .then(r => r.json())
+    .then(() => { window.location.reload(); })
+    .catch(() => { window.location.reload(); });
+  });
+})();
+</script>
 {% endblock %}
