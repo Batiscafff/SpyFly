@@ -399,6 +399,88 @@ def run_urlscan(api_key: str, target: str, dry_run: bool, original_url: str = ""
     }
 
 
+# ─── Google Dorks via Google Custom Search API ───────────────────────────────
+
+GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
+
+DORK_CATEGORIES = [
+    ("exposed_files",  "Exposed Files",    "site:{t} ext:sql OR ext:env OR ext:bak OR ext:log OR ext:cfg"),
+    ("admin_panels",   "Admin Panels",     "site:{t} inurl:admin OR inurl:panel OR inurl:dashboard OR inurl:cpanel"),
+    ("login_pages",    "Login Pages",      "site:{t} inurl:login OR inurl:signin OR inurl:auth OR inurl:wp-login"),
+    ("open_dirs",      "Open Directories", 'intitle:"index of" site:{t}'),
+    ("config_files",   "Config Files",     "site:{t} ext:xml OR ext:conf OR ext:config OR ext:yaml OR ext:yml"),
+    ("sensitive_text", "Sensitive Content","site:{t} intext:password OR intext:secret OR intext:token OR intext:api_key"),
+    ("subdomains",     "Subdomains",       "site:*.{t} -site:www.{t}"),
+]
+
+
+def run_dorks(api_key: str, cse_id: str, target: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "categories": [
+                {
+                    "id": "admin_panels", "label": "Admin Panels",
+                    "query": f"site:{target} inurl:admin OR inurl:panel",
+                    "results": [
+                        {"title": "Admin Panel — Example", "url": f"https://{target}/admin",     "snippet": "Administration login panel"},
+                        {"title": "Dashboard — Example",   "url": f"https://{target}/dashboard", "snippet": "Management dashboard"},
+                    ],
+                },
+                {
+                    "id": "login_pages", "label": "Login Pages",
+                    "query": f"site:{target} inurl:login",
+                    "results": [
+                        {"title": "Login — Example", "url": f"https://{target}/login", "snippet": "User authentication page"},
+                    ],
+                },
+                {
+                    "id": "exposed_files", "label": "Exposed Files",
+                    "query": f"site:{target} ext:env OR ext:bak",
+                    "results": [],
+                },
+            ],
+            "total_findings": 3,
+        }
+
+    if not api_key or not cse_id:
+        missing = []
+        if not api_key: missing.append("GOOGLE_API_KEY")
+        if not cse_id:  missing.append("GOOGLE_CSE_ID")
+        return {"error": f"{', '.join(missing)} not configured"}
+
+    categories = []
+    total = 0
+
+    for cat_id, label, template in DORK_CATEGORIES:
+        query = template.format(t=target)
+        results = []
+        try:
+            resp = requests.get(
+                GOOGLE_CSE_URL,
+                params={"key": api_key, "cx": cse_id, "q": query, "num": 10},
+                timeout=15,
+            )
+            if resp.status_code == 429:
+                return {"error": "Google CSE rate limit reached (100 req/day on free plan)", "categories": categories, "total_findings": total}
+            if resp.status_code == 403:
+                return {"error": "Invalid GOOGLE_API_KEY or GOOGLE_CSE_ID", "categories": categories, "total_findings": total}
+            resp.raise_for_status()
+            for item in resp.json().get("items", []):
+                results.append({
+                    "title":   item.get("title", ""),
+                    "url":     item.get("link", ""),
+                    "snippet": item.get("snippet", "")[:200],
+                })
+        except Exception as exc:
+            results = [{"error": str(exc)}]
+
+        total += len([r for r in results if "error" not in r])
+        categories.append({"id": cat_id, "label": label, "query": query, "results": results})
+        time.sleep(0.3)
+
+    return {"categories": categories, "total_findings": total}
+
+
 # ─── VirusTotal hash lookup ───────────────────────────────────────────────────
 
 def lookup_hash_virustotal(api_key: str, hash_value: str, dry_run: bool) -> dict:
@@ -498,5 +580,12 @@ def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path, 
         results["crtsh"] = run_crtsh(target, dry_run)
     else:
         results["crtsh"] = None
+
+    _upd("Google Dorks", 39)
+    results["dorks"] = run_dorks(
+        cfg.get("GOOGLE_API_KEY", ""),
+        cfg.get("GOOGLE_CSE_ID", ""),
+        target, dry_run,
+    )
 
     return results

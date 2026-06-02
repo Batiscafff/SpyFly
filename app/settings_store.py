@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-KEYS = ["SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "ABUSEIPDB_API_KEY", "NVD_API_KEY", "URLSCAN_API_KEY"]
+KEYS = ["SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "ABUSEIPDB_API_KEY", "NVD_API_KEY", "URLSCAN_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CSE_ID"]
 
 def _path(app) -> Path:
     return Path(app.root_path).parent / "settings.json"

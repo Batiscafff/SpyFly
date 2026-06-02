@@ -428,6 +428,70 @@
   </div>
   {% endif %}
 
+  <!-- Google Dorks -->
+  {% if passive.dorks %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-search me-2"></i>Google Dorks
+      {% if not passive.dorks.error %}
+      <span class="badge rounded-pill ms-2" style="background:rgba(255,255,255,0.1);color:var(--sf-muted);font-size:.7rem;">
+        {{ passive.dorks.total_findings }} findings
+      </span>
+      {% endif %}
+    </div>
+    <div class="p-3">
+    {% if passive.dorks.error %}
+      <div class="sf-muted" style="font-size:.875rem;">{{ passive.dorks.error }}</div>
+    {% else %}
+      {% set has_results = [] %}
+      {% for cat in passive.dorks.categories %}
+        {% for r in cat.results %}{% if r.url %}{% set _ = has_results.append(1) %}{% endif %}{% endfor %}
+      {% endfor %}
+      {% if has_results %}
+        {% for cat in passive.dorks.categories %}
+          {% set valid = [] %}
+          {% for r in cat.results %}{% if r.url %}{% set _ = valid.append(r) %}{% endif %}{% endfor %}
+          {% if valid %}
+          <div class="mb-4">
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+              <span class="fw-semibold" style="font-size:.875rem;">{{ cat.label }}</span>
+              <span class="badge rounded-pill" style="background:rgba(248,81,73,0.15);color:var(--sf-danger);font-size:.7rem;">
+                {{ valid|length }}
+              </span>
+              <code class="sf-muted ms-auto" style="font-size:.68rem;word-break:break-all;">{{ cat.query }}</code>
+            </div>
+            <table class="sf-table">
+              <tbody>
+                {% for r in valid %}
+                <tr>
+                  <td style="width:30%;">
+                    <a href="{{ r.url }}" target="_blank" class="attck-link" style="font-size:.8rem;">
+                      {{ r.title[:55] }}{% if r.title|length > 55 %}…{% endif %}
+                    </a>
+                  </td>
+                  <td>
+                    <code style="font-size:.7rem;word-break:break-all;">
+                      {{ r.url[:70] }}{% if r.url|length > 70 %}…{% endif %}
+                    </code>
+                  </td>
+                  <td class="sf-muted" style="font-size:.75rem;">
+                    {{ r.snippet[:100] }}{% if r.snippet|length > 100 %}…{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        <div class="sf-muted" style="font-size:.875rem;">No indexed pages found via dork queries.</div>
+      {% endif %}
+    {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
 </div><!-- /left -->
 
 <!-- RIGHT COLUMN ─────────────────────────────────────────────────────────── -->
