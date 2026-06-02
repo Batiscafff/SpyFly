@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Report — {{ status.target }}{% endblock %}
+{% block title %}Report — {{ status.original_url or status.target }}{% endblock %}
 
 {% set passive = results.passive_osint or {} %}
 {% set active  = results.active_scan or {} %}
@@ -16,7 +16,8 @@
   <div>
     <h4 class="fw-bold mb-1">
       <i class="bi bi-file-earmark-text me-2" style="color:var(--sf-accent);"></i>
-      Scan Report: <code>{{ status.target }}</code>
+      Scan Report: <code>{{ status.original_url or status.target }}</code>
+      {% if status.original_url %}<small class="sf-muted ms-1" style="font-size:.75rem;">(host: {{ status.target }})</small>{% endif %}
     </h4>
     <small class="sf-muted">
       {{ status.scan_mode }} mode

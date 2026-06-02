@@ -3,6 +3,20 @@ import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
+
+
+def _extract_host(raw: str) -> tuple[str, str]:
+    """Return (hostname_or_ip, original_url).
+
+    If raw is a URL (contains '://'), hostname is extracted and original_url is raw.
+    Otherwise original_url is empty string.
+    """
+    s = raw.strip()
+    if "://" in s:
+        parsed = urlparse(s)
+        return parsed.hostname or s, s
+    return s, ""
 
 def _scan_dir(app, scan_id: str) -> Path:
     d = Path(app.config["SCANS_DIR"]) / scan_id
@@ -69,9 +83,12 @@ def start_scan(app, target: str, scan_mode: str, dry_run: bool, ports: str = "")
     scan_id = str(uuid.uuid4())
     scan_path = _scan_dir(app, scan_id)
 
+    host, original_url = _extract_host(target)
+
     status = {
         "id": scan_id,
-        "target": target,
+        "target": host,
+        "original_url": original_url,
         "scan_mode": scan_mode,
         "ports": ports,
         "dry_run": dry_run,
@@ -121,6 +138,7 @@ def _run_scan(app, scan_id: str, scan_path: Path, status: dict):
         _update(scan_path, status, status="running", progress=5, current_module="Initializing")
 
         target = status["target"]
+        original_url = status.get("original_url", "")
         dry_run = status["dry_run"]
         scan_mode = status["scan_mode"]
         ports = status.get("ports", "")
@@ -133,7 +151,7 @@ def _run_scan(app, scan_id: str, scan_path: Path, status: dict):
                     progress=10, current_module="Passive OSINT")
 
             from app.modules.passive_osint import run_passive_osint
-            results["passive_osint"] = run_passive_osint(app, target, dry_run, status, scan_path)
+            results["passive_osint"] = run_passive_osint(app, target, dry_run, status, scan_path, original_url)
 
             _update(scan_path, status,
                     modules={**status["modules"], "passive_osint": "done"},

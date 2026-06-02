@@ -292,7 +292,7 @@ def _parse_urlscan_result(data: dict, uuid: str, source: str, screenshot_overrid
     }
 
 
-def run_urlscan(api_key: str, target: str, dry_run: bool) -> dict:
+def run_urlscan(api_key: str, target: str, dry_run: bool, original_url: str = "") -> dict:
     if dry_run:
         return {
             "scan_url":       "https://urlscan.io/result/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/",
@@ -363,7 +363,7 @@ def run_urlscan(api_key: str, target: str, dry_run: bool) -> dict:
     if not api_key:
         return {"error": "No URLScan results found. Configure URLSCAN_API_KEY to submit new scans."}
 
-    url_to_scan = f"http://{target}" if _is_ip(target) else f"https://{target}"
+    url_to_scan = original_url or (f"http://{target}" if _is_ip(target) else f"https://{target}")
     try:
         sub_resp = requests.post(
             "https://urlscan.io/api/v1/scan/",
@@ -457,7 +457,7 @@ def lookup_hash_virustotal(api_key: str, hash_value: str, dry_run: bool) -> dict
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
-def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path) -> dict:
+def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path, original_url: str = "") -> dict:
     from pathlib import Path
 
     cfg = app.config
@@ -490,7 +490,7 @@ def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path) 
     time.sleep(0.2)
 
     _upd("URLScan.io", 33)
-    results["urlscan"] = run_urlscan(cfg.get("URLSCAN_API_KEY", ""), target, dry_run)
+    results["urlscan"] = run_urlscan(cfg.get("URLSCAN_API_KEY", ""), target, dry_run, original_url)
     time.sleep(0.2)
 
     if is_domain:

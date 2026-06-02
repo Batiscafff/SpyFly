@@ -265,7 +265,7 @@
             <div class="d-flex align-items-center gap-2 mb-1">
               <span class="status-dot {{ scan.status }}"></span>
               <span class="fw-semibold" style="font-size:1.05rem;">
-                <code>{{ scan.target }}</code>
+                <code>{{ scan.original_url or scan.target }}</code>
               </span>
               <span class="badge rounded-pill"
                     style="background:rgba(255,255,255,0.08);color:var(--sf-muted);font-size:.7rem;">

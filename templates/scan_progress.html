@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Scan — {{ status.target }}{% endblock %}
+{% block title %}Scan — {{ status.original_url or status.target }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -9,7 +9,7 @@
     <div class="d-flex align-items-center gap-3 mb-4" id="header-running">
       <div class="spinner-border text-info" role="status" style="width:1.4rem;height:1.4rem;" id="scan-spinner"></div>
       <div>
-        <h5 class="mb-0 fw-bold">Scanning <code>{{ status.target }}</code></h5>
+        <h5 class="mb-0 fw-bold">Scanning <code>{{ status.original_url or status.target }}</code></h5>
         <small class="sf-muted">{{ status.scan_mode }} mode
           {% if status.dry_run %}&bull; <span style="color:var(--sf-warning);">dry-run</span>{% endif %}
         </small>
