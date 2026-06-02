@@ -77,10 +77,16 @@ def run_nmap(target: str, dry_run: bool, ports: str = "") -> dict:
         nm = nmap_lib.PortScanner()
         nm.scan(target, arguments=f"-sV -T4 -p {ports_spec}")
 
-        if target not in nm.all_hosts():
+        all_hosts = nm.all_hosts()
+        if target in all_hosts:
+            host_key = target
+        elif all_hosts:
+            # nmap resolved the domain to an IP — use whichever host was scanned
+            host_key = all_hosts[0]
+        else:
             return {"ports": [], "os_guess": None, "ports_spec": ports_spec}
 
-        host = nm[target]
+        host = nm[host_key]
         port_list = []
         for proto in host.all_protocols():
             for port_num, data in sorted(host[proto].items()):
@@ -187,7 +193,14 @@ def run_ssl_check(target: str, dry_run: bool) -> dict:
         }
     except ssl.SSLError as exc:
         return {"error": f"SSL error: {exc}"}
-    except (socket.timeout, ConnectionRefusedError, OSError) as exc:
+    except ConnectionRefusedError:
+        return {"no_ssl": True, "error": "no_ssl"}
+    except socket.timeout:
+        return {"no_ssl": True, "error": "timeout"}
+    except OSError as exc:
+        import errno as _errno
+        if exc.errno == _errno.ECONNREFUSED:
+            return {"no_ssl": True, "error": "no_ssl"}
         return {"error": f"Connection failed: {exc}"}
     except Exception as exc:
         return {"error": str(exc)}

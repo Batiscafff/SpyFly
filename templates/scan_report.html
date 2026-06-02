@@ -523,7 +523,23 @@
     <div class="sf-card-header"><i class="bi bi-lock me-2"></i>SSL / TLS Certificate</div>
     <div class="p-3">
     {% if active.ssl.error %}
+      {% if active.ssl.no_ssl and active.ssl.error == "no_ssl" %}
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge badge-high px-2 py-1">
+          <i class="bi bi-shield-x me-1"></i>No SSL / TLS Certificate
+        </span>
+        <span class="sf-muted" style="font-size:.8rem;">Port 443 is closed or not listening</span>
+      </div>
+      {% elif active.ssl.no_ssl and active.ssl.error == "timeout" %}
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge badge-medium px-2 py-1">
+          <i class="bi bi-hourglass-split me-1"></i>SSL Check Timed Out
+        </span>
+        <span class="sf-muted" style="font-size:.8rem;">Port 443 may be filtered by a firewall</span>
+      </div>
+      {% else %}
       <div class="sf-muted">{{ active.ssl.error }}</div>
+      {% endif %}
     {% else %}
       <div style="font-size:.875rem;">
         {% if active.ssl.expired %}
@@ -683,7 +699,7 @@
 </div><!-- /row -->
 
 <!-- ── CVE Table (full width) ─────────────────────────────────────────────── -->
-{% if results.cve_lookup %}
+{% if results.active_scan is not none or results.cve_lookup|length > 0 %}
 <div class="sf-card mb-4">
   <div class="sf-card-header">
     <i class="bi bi-bug me-2"></i>CVE Findings
