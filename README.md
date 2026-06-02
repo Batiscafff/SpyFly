@@ -77,10 +77,12 @@ python run.py
 
 Відкрити `http://localhost:5000`. Форма запуску скану має дві вкладки:
 
-**URL / IP** — сканування по IP-адресі або домену.
+**URL / IP** — сканування по IP-адресі, домену або повному URL.
 
 Поля:
-- **Target** — IP-адреса або доменне ім'я
+- **Target** — IP-адреса, доменне ім'я або повний URL (наприклад `https://example.com/login`).
+  При передачі URL hostname витягується автоматично: всі модулі отримують домен/IP,
+  URLScan.io отримує повний URL для точнішого submission.
 - **Scan mode:**
   - `Passive` — тільки OSINT через публічні API, без прямого контакту з ціллю
   - `Active` — тільки nmap + SSL + DNS brute-force, без OSINT (для локальної інфраструктури)
@@ -190,6 +192,7 @@ SpyFly/
 {
   "id": "uuid",
   "target": "example.com",
+  "original_url": "https://example.com/login",
   "scan_mode": "active",
   "ports": "1-1024",
   "dry_run": false,
