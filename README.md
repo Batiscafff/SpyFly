@@ -14,7 +14,7 @@ Flask-застосунок для автоматизованої OSINT-розв�
 | Модуль | Що робить |
 |--------|-----------|
 | **Passive OSINT** | Shodan, VirusTotal, AbuseIPDB, crt.sh, WHOIS, URLScan.io — без прямого контакту з ціллю |
-| **Active Scan** | nmap (порти + версії сервісів), SSL/TLS аналіз, DNS brute-force |
+| **Active Scan** | nmap (порти + версії сервісів), SSL/TLS аналіз, DNS brute-force, HTTP security headers audit |
 | **CVE Lookup** | NVD API v2 — пошук CVE для знайдених версій ПЗ + CVSS-скоринг |
 | **MITRE ATT&CK** | Автоматичний маппінг знахідок на техніки матриці ATT&CK |
 | **Hash Check** | Перевірка MD5/SHA-1/SHA-256 через VirusTotal; одиночна та batch-перевірка з файлу |
@@ -116,6 +116,7 @@ python run.py
 | Nmap ports (open / closed / not shown) | — | ✓ | ✓ |
 | SSL/TLS certificate | — | ✓ | ✓ |
 | DNS Brute-force | — | ✓ | ✓ |
+| HTTP Security Headers (missing / info disclosure) | — | ✓ | ✓ |
 | CVE Findings | ✓ | ✓ | ✓ |
 | MITRE ATT&CK | ✓ | ✓ | ✓ |
 
@@ -228,15 +229,16 @@ SpyFly/
 | `run_crtsh()` | crt.sh JSON API | — | — |
 | `lookup_hash_virustotal()` | VirusTotal API v3 `/files` | 4 req/min | ✓ |
 
-`run_shodan()` і `run_whois()` огорнуті в `concurrent.futures.ThreadPoolExecutor` з timeout=15s.
-
 \* URLScan без ключа: пошук по існуючим публічним сканам. З ключем: також отримує tech stack (Wappalyzer) та може запускати нові скани.
+
+`run_shodan()` і `run_whois()` огорнуті в `concurrent.futures.ThreadPoolExecutor` з timeout=15s.
 
 ### active_scan.py
 
 - **`run_nmap()`** — приймає `ports: str` (перелік, діапазон або порожньо для дефолту). `_sanitize_ports()` валідує і повертає `DEFAULT_PORTS` при невалідному значенні. Результат включає `ports_spec` і `not_shown_closed`.
 - **`run_ssl_check()`** — SSL-сертифікат на порту 443: subject, issuer, expiry, cipher, SAN
-- **`run_dns_brute()`** — перебір ~70 поширених субдоменів
+- **`run_dns_brute()`** — перебір 79 поширених субдоменів
+- **`run_http_headers()`** — GET-запит до цілі (HTTPS → HTTP fallback; для IP тільки HTTP). Перевіряє 6 security headers і повертає три списки: `missing` (name + severity + опис ризику), `present`, `info_disclosure` (Server, X-Powered-By тощо). SSL-помилки обробляються автоматично через retry з `verify=False`.
 
 ### cve_lookup.py
 
@@ -245,7 +247,7 @@ NVD API v2.0, rate limit: 6.5 сек/запит без ключа, 0.7 сек з
 
 ### mitre_mapper.py
 
-Rule engine без зовнішніх залежностей, 12 правил:
+Rule engine без зовнішніх залежностей, 15 правил:
 
 | Умова | Техніка | Тактика |
 |-------|---------|---------|
@@ -261,6 +263,9 @@ Rule engine без зовнішніх залежностей, 12 правил:
 | WHOIS доступний | T1583.001 Domains | Resource Development |
 | Shodan vulns | T1078 Valid Accounts | Initial Access |
 | SSL прострочений | T1190 | Initial Access |
+| Відсутній `Strict-Transport-Security` | T1557 Adversary-in-the-Middle | Credential Access |
+| Відсутній `Content-Security-Policy` | T1059.007 JavaScript | Execution |
+| Відсутній `X-Frame-Options` | T1185 Browser Session Hijacking | Collection |
 
 ---
 
@@ -302,7 +307,7 @@ Rule engine без зовнішніх залежностей, 12 правил:
 | Frontend | Bootstrap 5 (dark), Bootstrap Icons |
 | Пасивний OSINT | `requests`, `shodan`, `python-whois` |
 | Web-аналіз | URLScan.io API (пошук + Wappalyzer) |
-| Активне сканування | `python-nmap`, `ssl`, `socket` |
+| Активне сканування | `python-nmap`, `ssl`, `socket`, `requests` (HTTP headers) |
 | CVE/CVSS | NVD REST API v2.0 |
 | ATT&CK маппінг | власний rule engine |
 | Зберігання | JSON-файли (без БД) |

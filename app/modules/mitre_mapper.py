@@ -69,6 +69,24 @@ TECHNIQUES = {
         "tactic_name": "Initial Access",
         "url": "https://attack.mitre.org/techniques/T1078/",
     },
+    "T1557": {
+        "name": "Adversary-in-the-Middle",
+        "tactic": "TA0006",
+        "tactic_name": "Credential Access",
+        "url": "https://attack.mitre.org/techniques/T1557/",
+    },
+    "T1059.007": {
+        "name": "Command and Scripting Interpreter: JavaScript",
+        "tactic": "TA0002",
+        "tactic_name": "Execution",
+        "url": "https://attack.mitre.org/techniques/T1059/007/",
+    },
+    "T1185": {
+        "name": "Browser Session Hijacking",
+        "tactic": "TA0009",
+        "tactic_name": "Collection",
+        "url": "https://attack.mitre.org/techniques/T1185/",
+    },
 }
 
 # Remote admin ports → T1133
@@ -117,6 +135,12 @@ def _get_subdomains(results: dict) -> list[str]:
 def _get_emails(results: dict) -> list[str]:
     passive = results.get("passive_osint") or {}
     return (passive.get("whois") or {}).get("emails", [])
+
+
+def _missing_headers(results: dict) -> set[str]:
+    active = results.get("active_scan") or {}
+    hh = active.get("http_headers") or {}
+    return {h["name"] for h in hh.get("missing", [])}
 
 
 def _has_high_cve(cves: list[dict]) -> bool:
@@ -220,5 +244,20 @@ def map_to_attck(results: dict) -> list[dict]:
     ssl_data = active.get("ssl") or {}
     if ssl_data.get("expired"):
         _add("T1190", "SSL certificate is expired — service may be vulnerable or misconfigured")
+
+    # HTTP security header findings
+    missing_hdr = _missing_headers(results)
+
+    # T1557 — Missing HSTS enables SSL stripping / HTTP downgrade MITM
+    if "Strict-Transport-Security" in missing_hdr:
+        _add("T1557", "Missing Strict-Transport-Security — SSL stripping attack possible (HTTP downgrade before HTTPS redirect)")
+
+    # T1059.007 — Missing CSP enables unrestricted JavaScript execution via XSS
+    if "Content-Security-Policy" in missing_hdr:
+        _add("T1059.007", "Missing Content-Security-Policy — XSS can execute arbitrary JavaScript without script-source restrictions")
+
+    # T1185 — Missing X-Frame-Options enables clickjacking to hijack browser sessions
+    if "X-Frame-Options" in missing_hdr:
+        _add("T1185", "Missing X-Frame-Options — page can be embedded in a hidden iframe (clickjacking / session hijacking)")
 
     return list(findings.values())

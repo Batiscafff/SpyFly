@@ -14,6 +14,11 @@ import ssl
 import time
 from datetime import datetime
 
+import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -234,6 +239,138 @@ def run_dns_brute(domain: str, dry_run: bool) -> dict:
     return {"found": found, "total_checked": len(DNS_WORDLIST)}
 
 
+# ─── HTTP Security Headers ────────────────────────────────────────────────────
+
+_SECURITY_HEADERS = [
+    {
+        "name": "Strict-Transport-Security",
+        "severity": "HIGH",
+        "description": "Missing HSTS — browser may downgrade to HTTP, enabling MITM attacks",
+    },
+    {
+        "name": "Content-Security-Policy",
+        "severity": "HIGH",
+        "description": "Missing CSP — no protection against XSS and data injection",
+    },
+    {
+        "name": "X-Frame-Options",
+        "severity": "MEDIUM",
+        "description": "Missing X-Frame-Options — page may be embedded in iframes (clickjacking risk)",
+    },
+    {
+        "name": "X-Content-Type-Options",
+        "severity": "MEDIUM",
+        "description": "Missing X-Content-Type-Options — browser may MIME-sniff response content type",
+    },
+    {
+        "name": "Referrer-Policy",
+        "severity": "LOW",
+        "description": "Missing Referrer-Policy — full URL may leak to third parties via Referer header",
+    },
+    {
+        "name": "Permissions-Policy",
+        "severity": "LOW",
+        "description": "Missing Permissions-Policy — browser features (camera, mic, etc.) not restricted",
+    },
+]
+
+_INFO_DISCLOSURE_HEADERS = ["Server", "X-Powered-By", "X-AspNet-Version", "X-AspNetMvc-Version"]
+
+
+def run_http_headers(target: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "url": f"https://{target}",
+            "status_code": 200,
+            "missing": [
+                {
+                    "name": "Content-Security-Policy",
+                    "severity": "HIGH",
+                    "description": "Missing CSP — no protection against XSS and data injection",
+                },
+                {
+                    "name": "Referrer-Policy",
+                    "severity": "LOW",
+                    "description": "Missing Referrer-Policy — full URL may leak to third parties via Referer header",
+                },
+            ],
+            "present": [
+                {"name": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains"},
+                {"name": "X-Frame-Options",           "value": "SAMEORIGIN"},
+                {"name": "X-Content-Type-Options",    "value": "nosniff"},
+                {"name": "Permissions-Policy",        "value": "geolocation=(), microphone=()"},
+            ],
+            "info_disclosure": [
+                {"name": "Server", "value": "nginx/1.18.0"},
+            ],
+        }
+
+    urls_to_try = (
+        [f"http://{target}"]
+        if _is_ip(target)
+        else [f"https://{target}", f"http://{target}"]
+    )
+
+    resp = None
+    checked_url = None
+    last_err = None
+    for url in urls_to_try:
+        try:
+            resp = requests.get(
+                url, timeout=10, allow_redirects=True,
+                verify=(not _is_ip(target)),
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            checked_url = url
+            break
+        except requests.exceptions.SSLError:
+            try:
+                resp = requests.get(
+                    url, timeout=10, allow_redirects=True, verify=False,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                )
+                checked_url = url
+                break
+            except Exception as exc:
+                last_err = exc
+        except Exception as exc:
+            last_err = exc
+
+    if resp is None:
+        return {"error": f"HTTP request failed: {last_err}"}
+
+    headers_lc = {k.lower(): v for k, v in resp.headers.items()}
+
+    missing = []
+    present = []
+    for spec in _SECURITY_HEADERS:
+        if spec["name"].lower() in headers_lc:
+            present.append({
+                "name":  spec["name"],
+                "value": headers_lc[spec["name"].lower()][:300],
+            })
+        else:
+            missing.append({
+                "name":        spec["name"],
+                "severity":    spec["severity"],
+                "description": spec["description"],
+            })
+
+    info_disclosure = [
+        {"name": h, "value": headers_lc[h.lower()][:300]}
+        for h in _INFO_DISCLOSURE_HEADERS
+        if h.lower() in headers_lc
+    ]
+
+    return {
+        "url":              checked_url,
+        "status_code":      resp.status_code,
+        "missing":          missing,
+        "present":          present,
+        "info_disclosure":  info_disclosure,
+    }
+
+
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def run_active_scan(app, target: str, dry_run: bool, ports: str = "") -> dict:
@@ -243,6 +380,9 @@ def run_active_scan(app, target: str, dry_run: bool, ports: str = "") -> dict:
     time.sleep(0.2)
 
     results["ssl"] = run_ssl_check(target, dry_run)
+    time.sleep(0.2)
+
+    results["http_headers"] = run_http_headers(target, dry_run)
     time.sleep(0.2)
 
     if not _is_ip(target):

@@ -587,6 +587,98 @@
   </div>
   {% endif %}
 
+  <!-- HTTP Security Headers -->
+  {% set hh = active.http_headers or {} %}
+  {% if hh and not hh.error %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-shield-lock me-2"></i>HTTP Security Headers
+      {% if hh.url %}
+      <span class="ms-2 fw-normal sf-muted" style="font-size:.72rem;text-transform:none;letter-spacing:0;">
+        <code style="font-size:.72rem;">{{ hh.url }}</code>
+        {% if hh.status_code %}· {{ hh.status_code }}{% endif %}
+      </span>
+      {% endif %}
+      {% if hh.missing %}
+      <span class="badge rounded-pill ms-2"
+            style="background:rgba(248,81,73,0.15);color:var(--sf-danger);font-size:.7rem;">
+        {{ hh.missing|length }} missing
+      </span>
+      {% else %}
+      <span class="badge rounded-pill ms-2"
+            style="background:rgba(63,185,80,0.12);color:var(--sf-accent2);font-size:.7rem;">
+        all present
+      </span>
+      {% endif %}
+    </div>
+    <div class="p-3">
+
+      {% if hh.missing %}
+      <div class="sf-section-label mb-2">Missing Headers</div>
+      <table class="sf-table mb-3">
+        <thead><tr><th>Header</th><th>Severity</th><th>Risk</th></tr></thead>
+        <tbody>
+          {% for h in hh.missing %}
+          <tr>
+            <td><code style="font-size:.82rem;">{{ h.name }}</code></td>
+            <td>
+              <span class="badge badge-{{ h.severity|lower }}">{{ h.severity }}</span>
+            </td>
+            <td class="sf-muted" style="font-size:.78rem;">{{ h.description }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if hh.info_disclosure %}
+      <div class="sf-section-label mb-2">Information Disclosure</div>
+      <table class="sf-table mb-3">
+        <thead><tr><th>Header</th><th>Value</th></tr></thead>
+        <tbody>
+          {% for h in hh.info_disclosure %}
+          <tr>
+            <td><code style="font-size:.82rem;">{{ h.name }}</code></td>
+            <td class="sf-muted" style="font-size:.82rem;">{{ h.value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if hh.present %}
+      <details{% if not hh.missing and not hh.info_disclosure %} open{% endif %}>
+        <summary class="sf-muted" style="cursor:pointer;font-size:.8rem;user-select:none;">
+          <i class="bi bi-check-circle me-1" style="color:var(--sf-accent2);"></i>
+          {{ hh.present|length }} security header{{ 's' if hh.present|length != 1 }} present
+        </summary>
+        <table class="sf-table mt-2" style="opacity:.75;">
+          <thead><tr><th>Header</th><th>Value</th></tr></thead>
+          <tbody>
+            {% for h in hh.present %}
+            <tr>
+              <td><code style="font-size:.82rem;">{{ h.name }}</code></td>
+              <td class="sf-muted" style="font-size:.78rem;word-break:break-all;">{{ h.value }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+
+      {% if not hh.missing and not hh.info_disclosure and not hh.present %}
+      <div class="sf-muted" style="font-size:.85rem;">No header data available.</div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% elif hh.error %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header"><i class="bi bi-shield-lock me-2"></i>HTTP Security Headers</div>
+    <div class="p-3 sf-muted" style="font-size:.85rem;">{{ hh.error }}</div>
+  </div>
+  {% endif %}
+
 </div><!-- /right -->
 </div><!-- /row -->
 
