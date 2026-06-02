@@ -38,12 +38,16 @@
 {% endif %}
 {% set shodan_ports = (passive.shodan or {}).get('ports', []) %}
 
+{% set _crtsh_names = passive.crtsh.domains | map(attribute='name') | list if passive.crtsh and passive.crtsh.domains else [] %}
+{% set _dns_names = active.dns_brute.found | map(attribute='subdomain') | list if active.dns_brute and active.dns_brute.found else [] %}
+{% set _all_subdomains = (_crtsh_names + _dns_names) | unique | list %}
+
 <div class="row g-3 mb-4">
   {% set stats = [
     ("bi-broadcast", (open_ports|length or shodan_ports|length)|string, "Open Ports", "var(--sf-accent)"),
     ("bi-bug",       status.cve_count|string,                        "CVEs Found",  "var(--sf-danger)"),
     ("bi-crosshair", mitre|length|string,                            "ATT&CK Techniques", "#c3e88d"),
-    ("bi-diagram-3", (passive.crtsh.domains|length if passive.crtsh and passive.crtsh.domains else 0)|string, "Subdomains", "var(--sf-muted)"),
+    ("bi-diagram-3", _all_subdomains|length|string,                  "Subdomains", "var(--sf-muted)"),
   ] %}
   {% for icon, val, label, color in stats %}
   <div class="col-6 col-md-3">
