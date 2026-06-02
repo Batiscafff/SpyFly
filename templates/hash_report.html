@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Hash Report — {{ status.hash_count }} hash{{ 'es' if status.hash_count != 1 }}{% endblock %}
+
+{% set hash_results = results.results or [] %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+  <div>
+    <h4 class="fw-bold mb-1">
+      <i class="bi bi-fingerprint me-2" style="color:var(--sf-accent);"></i>
+      Hash Report
+      <span class="badge rounded-pill ms-2"
+            style="background:rgba(88,166,255,0.1);color:var(--sf-accent);font-size:.75rem;">
+        {{ status.hash_count }} hash{{ 'es' if status.hash_count != 1 }}
+      </span>
+    </h4>
+    <small class="sf-muted">
+      {% if status.dry_run %}<span style="color:var(--sf-warning);">dry-run</span> &bull; {% endif %}
+      {{ status.started_at[:16].replace('T', ' ') if status.started_at else '' }} UTC
+    </small>
+  </div>
+  <a href="/report/{{ status.id }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-download me-1"></i>Download HTML
+  </a>
+</div>
+
+<!-- ── Summary bar ────────────────────────────────────────────────────────── -->
+{% set clean_count = status.hash_count - (status.malicious_count or 0) - (status.suspicious_count or 0) %}
+<div class="row g-3 mb-4">
+  {% set stats = [
+    ("bi-fingerprint",        status.hash_count|string,                "Checked",    "var(--sf-accent)"),
+    ("bi-shield-x",           (status.malicious_count  or 0)|string,  "Malicious",  "var(--sf-danger)"),
+    ("bi-shield-exclamation", (status.suspicious_count or 0)|string,  "Suspicious", "var(--sf-warning)"),
+    ("bi-shield-check",       clean_count|string,                     "Clean",      "var(--sf-accent2)"),
+  ] %}
+  {% for icon, val, label, color in stats %}
+  <div class="col-6 col-md-3">
+    <div class="sf-card p-3 text-center">
+      <i class="bi {{ icon }}" style="font-size:1.5rem;color:{{ color }};"></i>
+      <div style="font-size:1.8rem;font-weight:700;color:{{ color }};">{{ val }}</div>
+      <div class="sf-muted" style="font-size:.75rem;">{{ label }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ── Results table ──────────────────────────────────────────────────────── -->
+<div class="sf-card mb-4">
+  <div class="sf-card-header">
+    <i class="bi bi-table me-2"></i>Results
+  </div>
+  <div class="p-3">
+  {% if hash_results %}
+  <div style="overflow-x:auto;">
+    <table class="sf-table">
+      <thead>
+        <tr>
+          <th style="width:2rem;">#</th>
+          <th>Hash</th>
+          <th>Algo</th>
+          <th>Verdict</th>
+          <th>Name</th>
+          <th>File type</th>
+          <th>Size</th>
+          <th>Last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in hash_results %}
+        <tr>
+          <td class="sf-muted" style="font-size:.75rem;">{{ loop.index }}</td>
+          <td>
+            <code style="font-size:.72rem;word-break:break-all;display:block;max-width:220px;">
+              {{ r.hash or '—' }}
+            </code>
+          </td>
+          <td class="sf-muted" style="font-size:.78rem;">{{ r.algo or '—' }}</td>
+          <td>
+            {% if r.error %}
+              <span class="sf-muted" style="font-size:.78rem;">{{ r.error[:60] }}</span>
+            {% else %}
+              {% set mal = r.malicious or 0 %}
+              {% set sus = r.suspicious or 0 %}
+              {% set tot = r.total_engines or 0 %}
+              {% if mal > 0 %}
+                <span class="badge badge-critical">Malicious {{ mal }}/{{ tot }}</span>
+              {% elif sus > 0 %}
+                <span class="badge badge-high">Suspicious {{ sus }}/{{ tot }}</span>
+              {% else %}
+                <span class="badge badge-medium">Clean 0/{{ tot }}</span>
+              {% endif %}
+            {% endif %}
+          </td>
+          <td style="font-size:.82rem;">{{ r.name or '—' }}</td>
+          <td class="sf-muted" style="font-size:.78rem;">{{ r.type or '—' }}</td>
+          <td class="sf-muted" style="font-size:.78rem;">
+            {% if r.size %}
+              {% if r.size > 1048576 %}{{ "%.1f"|format(r.size / 1048576) }} MB
+              {% else %}{{ "%.1f"|format(r.size / 1024) }} KB{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="sf-muted" style="font-size:.78rem;">{{ r.last_seen or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="sf-muted">No results.</div>
+  {% endif %}
+  </div>
+</div>
+
+<footer class="sf-muted text-center py-3" style="font-size:.78rem;border-top:1px solid var(--sf-border);">
+  SpyFly &bull; {{ generated_at if generated_at else '' }} &bull; For authorized use only
+</footer>
+
+{% endblock %}

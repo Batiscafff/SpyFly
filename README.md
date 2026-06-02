@@ -17,7 +17,7 @@ Flask-застосунок для автоматизованої OSINT-розв�
 | **Active Scan** | nmap (порти + версії сервісів), SSL/TLS аналіз, DNS brute-force, HTTP security headers audit |
 | **CVE Lookup** | NVD API v2 — пошук CVE для знайдених версій ПЗ + CVSS-скоринг |
 | **MITRE ATT&CK** | Автоматичний маппінг знахідок на техніки матриці ATT&CK |
-| **Hash Check** | Перевірка MD5/SHA-1/SHA-256 через VirusTotal; одиночна та batch-перевірка з файлу |
+| **Hash Check** | Перевірка MD5/SHA-1/SHA-256 через VirusTotal; одиночна та batch-перевірка з файлу; результати зберігаються як окремий звіт |
 | **HTML Report** | Структурований dark-theme звіт зі скріншотом сайту та посиланнями на зовнішні ресурси |
 
 ---
@@ -94,7 +94,7 @@ python run.py
   - змішано: `22,80,8000-9000`
 - **Dry-run** — демо-режим з фіктивними даними, без реальних запитів
 
-**Hash** — перевірка хешу файлу через VirusTotal (MD5, SHA-1, SHA-256). Підтримує одиночну перевірку та batch-завантаження `.txt`-файлу з хешами (один на рядок). Результати оновлюються в реальному часі; при rate limit автоматично очікує 16 секунд.
+**Hash** — перевірка хешу файлу через VirusTotal (MD5, SHA-1, SHA-256). Підтримує одиночну перевірку та batch-завантаження `.txt`-файлу з хешами (один на рядок). Результати оновлюються в реальному часі; при rate limit автоматично очікує 16 секунд. Після отримання результатів з'являється кнопка **Save as Report** — зберігає перевірку як окремий hash-звіт в історії.
 
 ### 2. Прогрес сканування
 
@@ -124,9 +124,15 @@ python run.py
 
 Кнопка **Download HTML** зберігає повністю автономний HTML-файл зі вбудованими стилями.
 
-### 4. Історія сканів
+### 4. Історія звітів
 
-- Картки сканів зі статусом, датою, кількістю CVE та ATT&CK технік
+Відображає всі збережені звіти двох типів:
+
+| Тип | Позначка | Метадані |
+|-----|----------|----------|
+| Scan report | `scan · passive/active/full` | CVE count, ATT&CK count |
+| Hash report | `hash · N files` | кількість malicious / suspicious |
+
 - Одиночне видалення — кнопка `🗑` на картці
 - Масове видалення — чекбокси + тулбар "Delete selected"
 
@@ -160,7 +166,8 @@ SpyFly/
 │   ├── base.html                 # Bootstrap 5 dark, navbar
 │   ├── index.html                # Dashboard (форма + вкладки URL/Hash + історія)
 │   ├── scan_progress.html        # Live-прогрес
-│   ├── scan_report.html          # Повний звіт
+│   ├── scan_report.html          # Звіт по IP/домену
+│   ├── hash_report.html          # Звіт по хешах
 │   └── settings.html             # Сторінка API-ключів
 │
 ├── static/
@@ -181,17 +188,22 @@ SpyFly/
 | `POST` | `/scan` | Запуск нового скану |
 | `GET` | `/scan/<id>` | Прогрес або звіт |
 | `GET` | `/api/scan/<id>/status` | JSON статус (JS polling) |
-| `GET` | `/api/hash?hash=<hex>&dry_run=0` | Перевірка хешу через VirusTotal |
-| `GET` | `/report/<id>` | Скачати автономний HTML-звіт |
+| `GET` | `/api/hash?hash=<hex>&dry_run=0` | Перевірка хешу через VirusTotal (real-time, без збереження) |
+| `POST` | `/hash/report` | Зберегти hash-результати як звіт (JSON `{results, dry_run}`) |
+| `GET` | `/report/<id>` | Скачати автономний HTML-звіт (scan або hash) |
 | `POST` | `/scan/<id>/delete` | Видалити один скан |
 | `POST` | `/scans/delete-bulk` | Масове видалення (JSON `{"ids":[...]}`) |
 | `GET/POST` | `/settings` | API-ключі |
 
 ### Формат status.json
 
+Поле `"type"` визначає тип звіту і шаблон для рендерингу. Відсутність поля — зворотна сумісність зі старими сканами, трактується як `"scan"`.
+
+**Scan report** (`type: "scan"`):
 ```json
 {
   "id": "uuid",
+  "type": "scan",
   "target": "example.com",
   "original_url": "https://example.com/login",
   "scan_mode": "active",
@@ -210,6 +222,21 @@ SpyFly/
   "finished_at": "2026-06-02T10:00:45",
   "cve_count": 2,
   "attck_count": 4
+}
+```
+
+**Hash report** (`type: "hash"`):
+```json
+{
+  "id": "uuid",
+  "type": "hash",
+  "status": "done",
+  "hash_count": 3,
+  "malicious_count": 1,
+  "suspicious_count": 0,
+  "dry_run": false,
+  "started_at": "2026-06-02T13:28:00",
+  "finished_at": "2026-06-02T13:28:00"
 }
 ```
 

@@ -36,8 +36,12 @@ def scan_page(scan_id):
 
     if status["status"] == "done":
         results = scanner.read_results(app, scan_id) or {}
+        generated_at = status.get("finished_at", "")[:16].replace("T", " ") + " UTC"
+        if status.get("type") == "hash":
+            return render_template("hash_report.html", status=status, results=results,
+                                   generated_at=generated_at)
         return render_template("scan_report.html", status=status, results=results,
-                               generated_at=status.get("finished_at", "")[:16].replace("T", " ") + " UTC")
+                               generated_at=generated_at)
 
     return render_template("scan_progress.html", status=status)
 
@@ -59,8 +63,9 @@ def _make_standalone_html(app, scan_id: str) -> str:
     if not status or status.get("status") != "done":
         return ""
 
+    template = "hash_report.html" if status.get("type") == "hash" else "scan_report.html"
     html = render_template(
-        "scan_report.html",
+        template,
         status=status,
         results=results or {},
         generated_at=_dt.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
@@ -85,8 +90,11 @@ def download_report(scan_id):
     if not html:
         abort(404)
 
-    target = (scanner.read_status(app, scan_id) or {}).get("target", scan_id[:8])
-    filename = f"spyfly-{target}.html"
+    st = scanner.read_status(app, scan_id) or {}
+    if st.get("type") == "hash":
+        filename = f"spyfly-hashes-{scan_id[:8]}.html"
+    else:
+        filename = f"spyfly-{st.get('target', scan_id[:8])}.html"
 
     return Response(
         html,
@@ -124,6 +132,18 @@ def hash_lookup():
 
     api_key = app.config.get("VIRUSTOTAL_API_KEY", "")
     return jsonify(lookup_hash_virustotal(api_key, hash_value, dry_run))
+
+
+@bp.route("/hash/report", methods=["POST"])
+def save_hash_report():
+    app = current_app._get_current_object()
+    data = request.get_json(silent=True) or {}
+    results = data.get("results", [])
+    dry_run = bool(data.get("dry_run", False))
+    if not results:
+        return jsonify({"error": "No results provided"}), 400
+    scan_id = scanner.create_hash_report(app, results, dry_run)
+    return jsonify({"id": scan_id, "url": f"/scan/{scan_id}"})
 
 
 @bp.route("/settings", methods=["GET", "POST"])

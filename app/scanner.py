@@ -70,6 +70,32 @@ def list_scans(app) -> list[dict]:
     return scans
 
 
+def create_hash_report(app, results: list[dict], dry_run: bool) -> str:
+    """Save pre-computed VirusTotal hash results as a report. Returns scan_id."""
+    scan_id = str(uuid.uuid4())
+    scan_path = _scan_dir(app, scan_id)
+
+    malicious_count  = sum(1 for r in results if not r.get("error") and (r.get("malicious") or 0) > 0)
+    suspicious_count = sum(1 for r in results if not r.get("error") and (r.get("malicious") or 0) == 0 and (r.get("suspicious") or 0) > 0)
+    now = datetime.utcnow().isoformat()
+
+    status = {
+        "id":               scan_id,
+        "type":             "hash",
+        "status":           "done",
+        "hash_count":       len(results),
+        "malicious_count":  malicious_count,
+        "suspicious_count": suspicious_count,
+        "dry_run":          dry_run,
+        "started_at":       now,
+        "finished_at":      now,
+    }
+
+    _write_status(scan_path, status)
+    _write_results(scan_path, {"type": "hash", "results": results})
+    return scan_id
+
+
 def delete_scan(app, scan_id: str):
     import shutil
     scan_path = Path(app.config["SCANS_DIR"]) / scan_id
