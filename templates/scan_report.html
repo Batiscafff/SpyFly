@@ -432,6 +432,45 @@
   </div>
   {% endif %}
 
+  <!-- Wayback Machine -->
+  {% if passive.wayback %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-clock-history me-2"></i>Wayback Machine
+      {% if not passive.wayback.error %}
+      <a href="{{ passive.wayback.snapshot_url }}" target="_blank"
+         class="ms-auto text-decoration-none" style="font-size:.75rem;color:var(--sf-accent);text-transform:none;letter-spacing:0;font-weight:400;">
+        View history <i class="bi bi-box-arrow-up-right ms-1"></i>
+      </a>
+      {% endif %}
+    </div>
+    <div class="p-3" style="font-size:.875rem;">
+    {% if passive.wayback.error %}
+      <div class="sf-muted">{{ passive.wayback.error }}</div>
+    {% elif not passive.wayback.available %}
+      <span class="badge badge-medium px-2 py-1">
+        <i class="bi bi-archive me-1"></i>Not archived — no snapshots found
+      </span>
+    {% else %}
+      <div class="d-flex flex-wrap gap-3">
+        {% if passive.wayback.first_seen %}
+        <div>
+          <div class="sf-muted" style="font-size:.75rem;">First seen</div>
+          <div class="fw-semibold">{{ passive.wayback.first_seen }}</div>
+        </div>
+        {% endif %}
+        {% if passive.wayback.last_seen %}
+        <div>
+          <div class="sf-muted" style="font-size:.75rem;">Last snapshot</div>
+          <div class="fw-semibold">{{ passive.wayback.last_seen }}</div>
+        </div>
+        {% endif %}
+      </div>
+    {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
 </div><!-- /left -->
 
 <!-- RIGHT COLUMN ─────────────────────────────────────────────────────────── -->

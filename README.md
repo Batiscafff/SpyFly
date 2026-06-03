@@ -13,7 +13,7 @@ Flask-застосунок для автоматизованої OSINT-розв�
 
 | Модуль | Що робить |
 |--------|-----------|
-| **Passive OSINT** | Shodan, VirusTotal, AbuseIPDB, crt.sh, WHOIS, URLScan.io — без прямого контакту з ціллю |
+| **Passive OSINT** | Shodan, VirusTotal, AbuseIPDB, crt.sh, WHOIS, URLScan.io, Wayback Machine — без прямого контакту з ціллю |
 | **Active Scan** | nmap (порти + версії сервісів), SSL/TLS аналіз, DNS brute-force, HTTP security headers audit |
 | **CVE Lookup** | NVD API v2 — пошук CVE для знайдених версій ПЗ + CVSS-скоринг |
 | **MITRE ATT&CK** | Автоматичний маппінг знахідок на техніки матриці ATT&CK |
@@ -113,6 +113,7 @@ python run.py
 | WHOIS | ✓ | — | ✓ |
 | URLScan.io (вердикт, tech stack, скріншот) | ✓ | — | ✓ |
 | crt.sh subdomains | ✓ | — | ✓ |
+| Wayback Machine (перший / останній знімок) | ✓ | — | ✓ |
 | Nmap ports (open / closed / not shown) | — | ✓ | ✓ |
 | SSL/TLS certificate | — | ✓ | ✓ |
 | DNS Brute-force | — | ✓ | ✓ |
@@ -254,9 +255,12 @@ SpyFly/
 | `run_whois()` | python-whois | — | — |
 | `run_urlscan()` | URLScan.io API v1 | — | Опційно* |
 | `run_crtsh()` | crt.sh JSON API | — | — |
+| `run_wayback()` | Wayback Machine CDX API + Availability API | — | — |
 | `lookup_hash_virustotal()` | VirusTotal API v3 `/files` | 4 req/min | ✓ |
 
 \* URLScan без ключа: пошук по існуючим публічним сканам. З ключем: також отримує tech stack (Wappalyzer) та може запускати нові скани.
+
+`run_wayback()` не потребує API-ключа. Виконує два паралельних запити: CDX API для першого знімку та Availability API для останнього. Timeout 45s на запит.
 
 `run_shodan()` і `run_whois()` огорнуті в `concurrent.futures.ThreadPoolExecutor` з timeout=15s.
 

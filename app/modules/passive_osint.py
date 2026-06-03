@@ -186,6 +186,71 @@ def run_crtsh(domain: str, dry_run: bool) -> dict:
         return {"error": str(exc)}
 
 
+# ─── Wayback Machine ──────────────────────────────────────────────────────────
+
+def run_wayback(target: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "available": True,
+            "first_seen": "2019-08-12",
+            "last_seen": "2026-05-20",
+            "snapshot_url": f"https://web.archive.org/web/*/{target}",
+        }
+
+    from datetime import datetime
+
+    CDX = "https://web.archive.org/cdx/search/cdx"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    TIMEOUT = 45
+
+    def _parse_ts(ts: str) -> str:
+        try:
+            return datetime.strptime(ts, "%Y%m%d%H%M%S").strftime("%Y-%m-%d")
+        except Exception:
+            return None
+
+    def _fetch_first():
+        return requests.get(CDX, params={
+            "url": target, "output": "json", "limit": 1, "fl": "timestamp",
+        }, timeout=TIMEOUT, headers=headers)
+
+    def _fetch_last():
+        # Availability API returns the closest (most recent) snapshot reliably
+        return requests.get(
+            "https://archive.org/wayback/available",
+            params={"url": target},
+            timeout=TIMEOUT, headers=headers,
+        )
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            f_first = pool.submit(_fetch_first)
+            f_last  = pool.submit(_fetch_last)
+            r_first = f_first.result()
+            r_last  = f_last.result()
+
+        data_first = r_first.json()
+        if len(data_first) <= 1:
+            return {"available": False, "snapshot_url": f"https://web.archive.org/web/*/{target}"}
+
+        # Availability API: {"archived_snapshots": {"closest": {"timestamp": "..."}}}
+        last_seen = None
+        try:
+            ts = r_last.json()["archived_snapshots"]["closest"]["timestamp"]
+            last_seen = _parse_ts(ts)
+        except Exception:
+            pass
+
+        return {
+            "available": True,
+            "first_seen": _parse_ts(data_first[1][0]),
+            "last_seen": last_seen,
+            "snapshot_url": f"https://web.archive.org/web/*/{target}",
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ─── WHOIS ────────────────────────────────────────────────────────────────────
 
 def run_whois(target: str, dry_run: bool) -> dict:
@@ -498,5 +563,8 @@ def run_passive_osint(app, target: str, dry_run: bool, status: dict, scan_path, 
         results["crtsh"] = run_crtsh(target, dry_run)
     else:
         results["crtsh"] = None
+
+    _upd("Wayback Machine", 40)
+    results["wayback"] = run_wayback(target, dry_run)
 
     return results
