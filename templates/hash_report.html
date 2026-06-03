@@ -75,6 +75,12 @@
             <code style="font-size:.72rem;word-break:break-all;display:block;max-width:220px;">
               {{ r.hash or '—' }}
             </code>
+            {% if r.hash and not r.error %}
+            <a href="https://www.virustotal.com/gui/file/{{ r.hash }}" target="_blank" rel="noopener"
+               style="font-size:.72rem;color:var(--sf-accent);white-space:nowrap;">
+              <i class="bi bi-box-arrow-up-right me-1"></i>VirusTotal
+            </a>
+            {% endif %}
           </td>
           <td class="sf-muted" style="font-size:.78rem;">{{ r.algo or '—' }}</td>
           <td>
