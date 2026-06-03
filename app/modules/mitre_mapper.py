@@ -8,6 +8,8 @@ map_to_attck(results) -> list[dict]
 Each dict: {technique_id, technique_name, tactic, tactic_name, description, findings}
 """
 
+import re
+
 TECHNIQUES = {
     "T1190": {
         "name": "Exploit Public-Facing Application",
@@ -147,13 +149,22 @@ def _has_high_cve(cves: list[dict]) -> bool:
     return any(c.get("score", 0) >= 7.0 for c in cves)
 
 
+_RCE_PATTERNS = [
+    re.compile(r'\bremote\s+code\s+execution\b', re.IGNORECASE),
+    re.compile(r'\barbitrary\s+code\b', re.IGNORECASE),
+    re.compile(r'\bcommand\s+injection\b', re.IGNORECASE),
+    re.compile(r'\bcode\s+injection\b', re.IGNORECASE),
+    re.compile(r'\bshell\s+(injection|upload|command)\b', re.IGNORECASE),
+    re.compile(r'\bprivilege\s+escalation\b', re.IGNORECASE),
+    re.compile(r'\brce\b', re.IGNORECASE),
+]
+
+
 def _has_rce_cve(cves: list[dict]) -> bool:
-    """Heuristic: CVE description mentions RCE-related keywords."""
-    rce_keywords = {"remote code execution", "rce", "arbitrary code", "command injection",
-                    "code injection", "shell", "privilege escalation"}
+    """Heuristic: CVE description mentions RCE-related keywords (word-boundary safe)."""
     for c in cves:
-        desc = c.get("description", "").lower()
-        if any(kw in desc for kw in rce_keywords):
+        desc = c.get("description", "")
+        if any(p.search(desc) for p in _RCE_PATTERNS):
             return True
     return False
 
@@ -206,8 +217,7 @@ def map_to_attck(results: dict) -> list[dict]:
     # T1203 — CVE with RCE potential
     if _has_rce_cve(cves):
         rce_cves = [c["id"] for c in cves
-                    if any(kw in c.get("description","").lower()
-                           for kw in {"remote code execution","rce","arbitrary code","command injection"})][:3]
+                    if any(p.search(c.get("description", "")) for p in _RCE_PATTERNS)][:3]
         _add("T1203", f"CVE(s) with RCE potential: {', '.join(rce_cves)}")
 
     # T1596.001 — Subdomains discovered

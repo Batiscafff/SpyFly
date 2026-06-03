@@ -753,12 +753,24 @@
   </div>
   <div class="p-3">
   {% for svc in results.cve_lookup %}
-    {% if svc.cves %}
+    {% if svc.error %}
+    <div class="mb-3">
+      <div class="mb-1" style="font-size:.82rem;">
+        <span class="fw-semibold">{{ svc.service }}</span>
+        <code class="ms-1">{{ svc.version }}</code>
+        {% if svc.port %}<span class="sf-muted ms-1">port {{ svc.port }}</span>{% endif %}
+      </div>
+      <span class="badge badge-medium px-2 py-1">
+        <i class="bi bi-exclamation-triangle me-1"></i>NVD lookup failed: {{ svc.error[:120] }}
+      </span>
+    </div>
+    {% elif svc.cves %}
     <div class="mb-3">
       <div class="mb-2" style="font-size:.82rem;">
         <span class="fw-semibold">{{ svc.service }}</span>
         <code class="ms-1">{{ svc.version }}</code>
         {% if svc.port %}<span class="sf-muted ms-1">port {{ svc.port }}</span>{% endif %}
+        {% if svc.cpe %}<span class="sf-muted ms-1" style="font-size:.75rem;">via CPE</span>{% endif %}
       </div>
       <table class="sf-table">
         <thead><tr><th>CVE</th><th>Score</th><th>Severity</th><th>Description</th><th>Published</th></tr></thead>
@@ -787,7 +799,7 @@
     </div>
     {% endif %}
   {% endfor %}
-  {% if status.cve_count == 0 %}
+  {% if status.cve_count == 0 and not results.cve_lookup | selectattr('error') | list %}
   <div class="sf-muted">No CVEs found for identified services.</div>
   {% endif %}
   </div>
