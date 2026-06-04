@@ -252,6 +252,79 @@ def run_dns_brute(domain: str, dry_run: bool) -> dict:
     return {"found": found, "total_checked": len(DNS_WORDLIST)}
 
 
+# ─── Extended DNS records ─────────────────────────────────────────────────────
+
+def run_dns_records(domain: str, dry_run: bool) -> dict:
+    if dry_run:
+        return {
+            "mx": [
+                {"host": f"mail.{domain}", "priority": 10},
+                {"host": f"mail2.{domain}", "priority": 20},
+            ],
+            "ns": [f"ns1.{domain}", f"ns2.{domain}"],
+            "txt": [
+                "v=spf1 include:_spf.google.com ~all",
+                "google-site-verification=abc123xyz",
+            ],
+            "spf": "v=spf1 include:_spf.google.com ~all",
+            "dmarc": "v=DMARC1; p=reject; rua=mailto:dmarc@example.com",
+        }
+
+    if _is_ip(domain):
+        return {"error": "Extended DNS requires a domain, not an IP"}
+
+    import dns.resolver
+    import dns.exception
+
+    resolver = dns.resolver.Resolver()
+    resolver.timeout = 5
+    resolver.lifetime = 10
+
+    result: dict = {"mx": [], "ns": [], "txt": [], "spf": None, "dmarc": None}
+
+    try:
+        for rr in resolver.resolve(domain, "MX"):
+            result["mx"].append({"host": str(rr.exchange).rstrip("."), "priority": rr.preference})
+        result["mx"].sort(key=lambda x: x["priority"])
+    except Exception:
+        pass
+
+    try:
+        for rr in resolver.resolve(domain, "NS"):
+            result["ns"].append(str(rr.target).rstrip("."))
+        result["ns"].sort()
+    except Exception:
+        pass
+
+    try:
+        txts = []
+        for rr in resolver.resolve(domain, "TXT"):
+            txt = "".join(
+                s.decode("utf-8", errors="replace") if isinstance(s, bytes) else s
+                for s in rr.strings
+            )
+            txts.append(txt)
+            if txt.lower().startswith("v=spf1"):
+                result["spf"] = txt
+        result["txt"] = txts
+    except Exception:
+        pass
+
+    try:
+        for rr in resolver.resolve(f"_dmarc.{domain}", "TXT"):
+            txt = "".join(
+                s.decode("utf-8", errors="replace") if isinstance(s, bytes) else s
+                for s in rr.strings
+            )
+            if txt.lower().startswith("v=dmarc1"):
+                result["dmarc"] = txt
+                break
+    except Exception:
+        pass
+
+    return result
+
+
 # ─── HTTP Security Headers ────────────────────────────────────────────────────
 
 _SECURITY_HEADERS = [
@@ -400,7 +473,9 @@ def run_active_scan(app, target: str, dry_run: bool, ports: str = "") -> dict:
 
     if not _is_ip(target):
         results["dns_brute"] = run_dns_brute(target, dry_run)
+        results["dns_records"] = run_dns_records(target, dry_run)
     else:
         results["dns_brute"] = None
+        results["dns_records"] = None
 
     return results

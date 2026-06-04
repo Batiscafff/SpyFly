@@ -646,6 +646,102 @@
   </div>
   {% endif %}
 
+  <!-- Extended DNS Records -->
+  {% set dns = active.dns_records or {} %}
+  {% if dns and not dns.error %}
+  <div class="sf-card mb-4">
+    <div class="sf-card-header">
+      <i class="bi bi-diagram-2 me-2"></i>DNS Records
+    </div>
+    <div class="p-3">
+      <div class="row g-3">
+
+        <!-- MX -->
+        <div class="col-md-6">
+          <div class="sf-muted mb-1" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;">MX — Mail Servers</div>
+          {% if dns.mx %}
+            {% for mx in dns.mx %}
+            <div style="font-size:.83rem;" class="mb-1">
+              <span class="badge rounded-pill me-2" style="background:rgba(88,166,255,0.12);color:var(--sf-accent);font-size:.68rem;">{{ mx.priority }}</span>
+              <code>{{ mx.host }}</code>
+            </div>
+            {% endfor %}
+          {% else %}
+            <span class="sf-muted" style="font-size:.82rem;">No MX records found</span>
+          {% endif %}
+        </div>
+
+        <!-- NS -->
+        <div class="col-md-6">
+          <div class="sf-muted mb-1" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;">NS — Nameservers</div>
+          {% if dns.ns %}
+            {% for ns in dns.ns %}
+            <div style="font-size:.83rem;" class="mb-1"><code>{{ ns }}</code></div>
+            {% endfor %}
+          {% else %}
+            <span class="sf-muted" style="font-size:.82rem;">—</span>
+          {% endif %}
+        </div>
+
+        <!-- SPF -->
+        <div class="col-md-6">
+          <div class="sf-muted mb-1" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;">SPF</div>
+          {% if dns.spf %}
+            {% set spf = dns.spf %}
+            {% if '-all' in spf %}
+              <span class="badge badge-low me-2">Strict (-all)</span>
+            {% elif '~all' in spf %}
+              <span class="badge badge-medium me-2">Softfail (~all)</span>
+            {% elif '+all' in spf %}
+              <span class="badge badge-critical me-2">Open (+all)</span>
+            {% elif '?all' in spf %}
+              <span class="badge badge-high me-2">Neutral (?all)</span>
+            {% else %}
+              <span class="badge badge-medium me-2">No all-mechanism</span>
+            {% endif %}
+            <div class="mt-1"><code style="font-size:.72rem;word-break:break-all;">{{ spf }}</code></div>
+          {% else %}
+            <span class="badge badge-high me-1">Missing</span>
+            <span class="sf-muted" style="font-size:.78rem;">No SPF record — anyone can spoof this domain</span>
+          {% endif %}
+        </div>
+
+        <!-- DMARC -->
+        <div class="col-md-6">
+          <div class="sf-muted mb-1" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;">DMARC</div>
+          {% if dns.dmarc %}
+            {% set dmarc = dns.dmarc %}
+            {% if 'p=reject' in dmarc %}
+              <span class="badge badge-low me-2">Reject</span>
+            {% elif 'p=quarantine' in dmarc %}
+              <span class="badge badge-medium me-2">Quarantine</span>
+            {% elif 'p=none' in dmarc %}
+              <span class="badge badge-high me-2">Monitor only (p=none)</span>
+            {% else %}
+              <span class="badge badge-medium me-2">Unknown policy</span>
+            {% endif %}
+            <div class="mt-1"><code style="font-size:.72rem;word-break:break-all;">{{ dmarc }}</code></div>
+          {% else %}
+            <span class="badge badge-high me-1">Missing</span>
+            <span class="sf-muted" style="font-size:.78rem;">No DMARC policy — phishing via this domain is undetected</span>
+          {% endif %}
+        </div>
+
+        <!-- TXT -->
+        {% if dns.txt %}
+        <div class="col-12">
+          <div class="sf-muted mb-1" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;">TXT Records</div>
+          {% for txt in dns.txt %}
+            <div class="mb-1"><code style="font-size:.72rem;word-break:break-all;">{{ txt }}</code></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- HTTP Security Headers -->
   {% set hh = active.http_headers or {} %}
   {% if hh and not hh.error %}
