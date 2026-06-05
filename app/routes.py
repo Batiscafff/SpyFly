@@ -1,3 +1,4 @@
+import json
 import re
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort, send_file, current_app, flash, Response
 from pathlib import Path
@@ -144,6 +145,136 @@ def save_hash_report():
         return jsonify({"error": "No results provided"}), 400
     scan_id = scanner.create_hash_report(app, results, dry_run)
     return jsonify({"id": scan_id, "url": f"/scan/{scan_id}"})
+
+
+_HASH_RE = re.compile(r'^[0-9a-fA-F]{32}$|^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$')
+
+
+@bp.route("/api/hash/scan", methods=["POST"])
+def api_hash_scan():
+    """Start an async batch hash scan via VirusTotal.
+
+    Body (JSON):
+        hashes    list[str]  required — MD5 (32), SHA-1 (40) or SHA-256 (64) hex strings
+        dry_run   bool       optional — return fake data without API calls (default: false)
+
+    Response 201:
+        {"id": "<uuid>", "hash_count": N,
+         "poll_url": "/api/scan/<uuid>/status",
+         "results_url": "/api/scan/<uuid>/results"}
+
+    Note: VirusTotal free plan is rate-limited to 4 req/min.
+    For N hashes expect ~N×16 s of processing time.
+    Poll poll_url until status == "done", then fetch results_url.
+    """
+    data = request.get_json(silent=True) or {}
+    hashes = data.get("hashes") or []
+    dry_run = bool(data.get("dry_run", False))
+
+    if not hashes or not isinstance(hashes, list):
+        return jsonify({"error": "hashes must be a non-empty list"}), 400
+
+    invalid = [h for h in hashes if not isinstance(h, str) or not _HASH_RE.match(h)]
+    if invalid:
+        return jsonify({"error": "invalid hash(es)", "examples": invalid[:3]}), 400
+
+    app = current_app._get_current_object()
+    scan_id = scanner.start_hash_scan(app, hashes, dry_run)
+    return jsonify({
+        "id": scan_id,
+        "hash_count": len(hashes),
+        "poll_url": f"/api/scan/{scan_id}/status",
+        "results_url": f"/api/scan/{scan_id}/results",
+    }), 201
+
+
+@bp.route("/api/scan", methods=["POST"])
+def api_start_scan():
+    """Start a scan programmatically.
+
+    Body (JSON):
+        target    str   required — IP, domain, or full URL
+        scan_mode str   optional — "passive" | "active" | "full"  (default: "passive")
+        ports     str   optional — nmap port spec, e.g. "22,80,443" or "1-1024"
+        dry_run   bool  optional — return fake data without network calls (default: false)
+
+    Response 201:
+        {"id": "<uuid>", "status": "queued", "poll_url": "/api/scan/<uuid>/status",
+         "results_url": "/api/scan/<uuid>/results"}
+    """
+    data = request.get_json(silent=True) or {}
+    target = (data.get("target") or "").strip()
+    scan_mode = data.get("scan_mode", "passive")
+    dry_run = bool(data.get("dry_run", False))
+    ports = (data.get("ports") or "").strip()
+
+    if not target:
+        return jsonify({"error": "target is required"}), 400
+    if scan_mode not in ("passive", "active", "full"):
+        return jsonify({"error": "scan_mode must be 'passive', 'active', or 'full'"}), 400
+
+    scan_id = scanner.start_scan(current_app._get_current_object(), target, scan_mode, dry_run, ports)
+    return jsonify({
+        "id": scan_id,
+        "status": "queued",
+        "poll_url": f"/api/scan/{scan_id}/status",
+        "results_url": f"/api/scan/{scan_id}/results",
+    }), 201
+
+
+@bp.route("/api/scans")
+def api_list_scans():
+    """List all scans (status objects, newest first).
+
+    Response 200: JSON array of status objects.
+    """
+    scans = scanner.list_scans(current_app._get_current_object())
+    return jsonify(scans)
+
+
+@bp.route("/api/scan/<scan_id>/results")
+def api_scan_results(scan_id):
+    """Download full scan results as a JSON file.
+
+    Returns 409 if the scan is not finished yet.
+    The response body is {"status": {...}, "results": {...}}.
+    """
+    app = current_app._get_current_object()
+    status = scanner.read_status(app, scan_id)
+    if status is None:
+        abort(404)
+    if status.get("status") != "done":
+        return jsonify({"error": "scan not finished yet", "status": status.get("status")}), 409
+
+    results = scanner.read_results(app, scan_id)
+    if results is None:
+        abort(404)
+
+    if status.get("type") == "hash":
+        filename = f"spyfly-hashes-{scan_id[:8]}.json"
+    else:
+        filename = f"spyfly-{status.get('target', scan_id[:8])}.json"
+
+    payload = json.dumps({"status": status, "results": results}, ensure_ascii=False, indent=2)
+    return Response(
+        payload,
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@bp.route("/api/scan/<scan_id>", methods=["DELETE"])
+def api_delete_scan(scan_id):
+    """Delete a scan by ID.
+
+    Response 200: {"ok": true}
+    Response 404: scan not found
+    """
+    app = current_app._get_current_object()
+    if scanner.read_status(app, scan_id) is None:
+        abort(404)
+    scanner.delete_scan(app, scan_id)
+    return jsonify({"ok": True})
 
 
 @bp.route("/settings", methods=["GET", "POST"])

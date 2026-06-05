@@ -24,12 +24,33 @@ Flask-застосунок для автоматизованої OSINT-розв�
 
 ## Встановлення
 
+### Варіант 1 — Docker (рекомендовано)
+
+Потребує тільки Docker і Docker Compose. nmap, Python та залежності встановлюються автоматично всередині контейнера.
+
+```bash
+cd SpyFly
+cp .env.example .env          # заповнити API ключі (або залишити порожнім)
+docker compose up -d          # збірка + запуск у фоні
+```
+
+Застосунок доступний на `http://localhost:5000`.
+
+```bash
+docker compose logs -f        # переглянути логи
+docker compose down           # зупинити (дані сканів зберігаються у named volume)
+docker compose down -v        # зупинити + видалити дані сканів
+docker compose up -d --build  # перезбудувати образ після змін у коді
+```
+
+### Варіант 2 — Локально (розробка)
+
 ```bash
 cd SpyFly
 pip install -r requirements.txt
 ```
 
-### Системні залежності
+### Системні залежності (тільки для локального запуску)
 
 ```bash
 sudo apt install nmap        # Debian/Ubuntu/Mint
@@ -68,6 +89,51 @@ python run.py
 ```
 
 Застосунок доступний на `http://localhost:5000`.
+
+---
+
+## Docker
+
+### Файли
+
+| Файл | Призначення |
+|------|-------------|
+| `Dockerfile` | Образ на базі `python:3.12-slim`; встановлює nmap, curl, залежності Python, запускає gunicorn |
+| `docker-compose.yml` | Один сервіс `spyfly`; named volume для сканів; передає змінні оточення з `.env` |
+| `.dockerignore` | Виключає `.git`, `scans/`, `settings.json`, `__pycache__` з контексту збірки |
+
+### Зберігання даних
+
+Скани зберігаються у Docker named volume `spyfly_scans` (`/app/scans` всередині контейнера). Volume **переживає** `docker compose down` та перезбірку образу.
+
+```bash
+# Переглянути де знаходяться дані
+docker volume inspect spyfly_scans
+
+# Резервна копія
+docker run --rm -v spyfly_scans:/data -v $(pwd):/backup alpine \
+  tar czf /backup/spyfly-backup.tar.gz /data
+```
+
+### API ключі в Docker
+
+Пріоритет конфігурації: `settings.json` (UI) > змінні оточення > `.env`.
+
+У Docker рекомендовано передавати ключі через `.env` або `environment:` у `docker-compose.yml` — вони потрапляють у контейнер автоматично. Налаштування через `/settings` UI також працюють, але зберігаються всередині контейнера (скидаються при `docker compose down -v`).
+
+Щоб зберігати UI-налаштування між перезапусками, розкоментуйте bind mount у `docker-compose.yml`:
+```yaml
+# - ./settings.json:/app/settings.json
+```
+І створіть файл заздалегідь: `echo '{}' > settings.json`.
+
+### nmap у контейнері
+
+Контейнер запускається з правами `cap_add: [NET_RAW, NET_ADMIN]`, що дозволяє nmap виконувати SYN-сканування. Для passive-only режиму ці capabilities можна прибрати з `docker-compose.yml`.
+
+### gunicorn vs Flask dev server
+
+У Docker застосунок запускається через gunicorn з параметрами `--workers 1 --threads 4`. Один worker обов'язковий: фонові потоки сканів та файловий стейт мають бути в одному процесі. Кілька workers призведуть до того, що статус скану буде недоступний у worker-ах, де він не запускався.
 
 ---
 
@@ -183,18 +249,216 @@ SpyFly/
 
 ### HTTP маршрути
 
+#### UI-маршрути
+
 | Метод | URL | Опис |
 |-------|-----|------|
 | `GET` | `/` | Dashboard |
-| `POST` | `/scan` | Запуск нового скану |
+| `POST` | `/scan` | Запуск нового скану (HTML-форма) |
 | `GET` | `/scan/<id>` | Прогрес або звіт |
-| `GET` | `/api/scan/<id>/status` | JSON статус (JS polling) |
-| `GET` | `/api/hash?hash=<hex>&dry_run=0` | Перевірка хешу через VirusTotal (real-time, без збереження) |
-| `POST` | `/hash/report` | Зберегти hash-результати як звіт (JSON `{results, dry_run}`) |
 | `GET` | `/report/<id>` | Скачати автономний HTML-звіт (scan або hash) |
+| `POST` | `/hash/report` | Зберегти hash-результати як звіт (JSON `{results, dry_run}`) — UI path |
 | `POST` | `/scan/<id>/delete` | Видалити один скан |
 | `POST` | `/scans/delete-bulk` | Масове видалення (JSON `{"ids":[...]}`) |
 | `GET/POST` | `/settings` | API-ключі |
+
+#### REST API
+
+| Метод | URL | Опис |
+|-------|-----|------|
+| `POST` | `/api/scan` | Запустити скан (JSON) |
+| `GET` | `/api/scans` | Список усіх сканів |
+| `GET` | `/api/scan/<id>/status` | JSON статус / прогрес |
+| `GET` | `/api/scan/<id>/results` | Скачати повний JSON-звіт |
+| `DELETE` | `/api/scan/<id>` | Видалити скан |
+| `GET` | `/api/hash?hash=<hex>&dry_run=0\|1` | Перевірка одного хешу (real-time, без збереження) |
+| `POST` | `/api/hash/scan` | Запустити батч-перевірку хешів (async) |
+
+---
+
+## REST API
+
+Застосунок надає JSON API для запуску сканів та отримання результатів програмно — без браузера.
+
+Усі `/api/*` маршрути приймають та повертають JSON. Автентифікація відсутня.
+
+### Сканування домену / IP
+
+#### Запустити скан
+
+```
+POST /api/scan
+Content-Type: application/json
+```
+
+**Тіло запиту:**
+
+| Поле | Тип | За замовчуванням | Опис |
+|------|-----|-----------------|------|
+| `target` | string | обов'язкове | IP-адреса, домен або повний URL (`https://example.com/path`) |
+| `scan_mode` | string | `"passive"` | `"passive"` \| `"active"` \| `"full"` |
+| `ports` | string | `""` | Порти для nmap: `"22,80,443"`, `"1-1024"`, порожньо = 18 дефолтних |
+| `dry_run` | bool | `false` | Повернути фіктивні дані без мережевих запитів |
+
+**Відповідь `201`:**
+```json
+{
+  "id": "3fa85f64-...",
+  "status": "queued",
+  "poll_url": "/api/scan/3fa85f64-.../status",
+  "results_url": "/api/scan/3fa85f64-.../results"
+}
+```
+
+#### Приклад: пасивний OSINT
+
+```bash
+# 1. Запустити
+curl -s -X POST http://localhost:5000/api/scan \
+  -H "Content-Type: application/json" \
+  -d '{"target": "example.com", "scan_mode": "passive"}' | tee scan.json
+
+SCAN_ID=$(jq -r .id scan.json)
+
+# 2. Чекати завершення
+until [ "$(curl -s http://localhost:5000/api/scan/$SCAN_ID/status | jq -r .status)" = "done" ]; do
+  echo "Progress: $(curl -s http://localhost:5000/api/scan/$SCAN_ID/status | jq .progress)%"
+  sleep 5
+done
+
+# 3. Завантажити JSON-звіт
+curl -O http://localhost:5000/api/scan/$SCAN_ID/results
+```
+
+#### Приклад: full scan з власним діапазоном портів
+
+```bash
+curl -X POST http://localhost:5000/api/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target": "192.168.1.1",
+    "scan_mode": "full",
+    "ports": "1-1024",
+    "dry_run": false
+  }'
+```
+
+#### Інші ендпоінти
+
+```bash
+# Список усіх сканів (від нових до старих)
+curl http://localhost:5000/api/scans
+
+# Статус конкретного скану
+curl http://localhost:5000/api/scan/<id>/status
+
+# JSON-звіт (тільки якщо status == "done", інакше 409)
+curl -O http://localhost:5000/api/scan/<id>/results
+
+# Видалити скан
+curl -X DELETE http://localhost:5000/api/scan/<id>
+```
+
+---
+
+### Перевірка хешів
+
+#### Один хеш (синхронно, без збереження)
+
+```bash
+curl "http://localhost:5000/api/hash?hash=d41d8cd98f00b204e9800998ecf8427e"
+```
+
+**Відповідь:**
+```json
+{
+  "name": "malware.exe",
+  "type": "Win32 EXE",
+  "size": 245760,
+  "malicious": 58,
+  "suspicious": 3,
+  "total_engines": 75,
+  "last_seen": "2025-03-12"
+}
+```
+
+#### Батч-перевірка (async, зі збереженням звіту)
+
+```
+POST /api/hash/scan
+Content-Type: application/json
+```
+
+**Тіло запиту:**
+
+| Поле | Тип | За замовчуванням | Опис |
+|------|-----|-----------------|------|
+| `hashes` | list[string] | обов'язкове | Список хешів: MD5 (32 символи), SHA-1 (40), SHA-256 (64) |
+| `dry_run` | bool | `false` | Повернути фіктивні дані без VT-запитів |
+
+**Відповідь `201`:**
+```json
+{
+  "id": "7b3a1c9e-...",
+  "hash_count": 3,
+  "poll_url": "/api/scan/7b3a1c9e-.../status",
+  "results_url": "/api/scan/7b3a1c9e-.../results"
+}
+```
+
+**Приклад:**
+```bash
+# 1. Запустити батч
+curl -s -X POST http://localhost:5000/api/hash/scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hashes": [
+      "d41d8cd98f00b204e9800998ecf8427e",
+      "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    ]
+  }' | tee hash_scan.json
+
+SCAN_ID=$(jq -r .id hash_scan.json)
+
+# 2. Чекати завершення
+until [ "$(curl -s http://localhost:5000/api/scan/$SCAN_ID/status | jq -r .status)" = "done" ]; do
+  sleep 5
+done
+
+# 3. Завантажити результати
+curl -O http://localhost:5000/api/scan/$SCAN_ID/results
+```
+
+> **Ліміт VirusTotal:** безкоштовний план — 4 запити/хв. Між запитами автоматично 16-секундна пауза. Для N хешів чекати ~N×16 секунд. Використовуйте `"dry_run": true` для тестування без очікування.
+
+---
+
+### Структура JSON-звіту
+
+Файл з `/api/scan/<id>/results` містить два ключі верхнього рівня:
+
+```json
+{
+  "status": { /* вміст status.json */ },
+  "results": { /* вміст results.json */ }
+}
+```
+
+**Scan report** (`results.scan_mode != null`):
+```
+results.passive_osint   — Shodan, VirusTotal, AbuseIPDB, WHOIS, URLScan, crt.sh, Wayback
+results.active_scan     — nmap, ssl, http_headers, dns_brute, dns_records
+results.cve_lookup      — [{service, version, port, cves: [{id, score, severity, ...}]}]
+results.mitre           — [{technique_id, technique_name, tactic, findings}]
+```
+
+**Hash report** (`status.type == "hash"`):
+```
+results.results   — [{hash, algo, name, type, size, malicious, suspicious, total_engines, ...}]
+```
+
+Поля `passive_osint` або `active_scan` будуть `null`, якщо відповідний модуль не запускався (залежить від `scan_mode`).
 
 ### Формат status.json
 

@@ -1,0 +1,33 @@
+services:
+  spyfly:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Scan results persist across container restarts and image rebuilds.
+      # To inspect the data: docker volume inspect spyfly_scans
+      - spyfly_scans:/app/scans
+      # Uncomment to persist UI-configured API keys (settings.json) on the host.
+      # Run `echo '{}' > settings.json` first if the file does not exist.
+      # - ./settings.json:/app/settings.json
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Override SECRET_KEY in production via .env or the environment block below.
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    # NET_RAW + NET_ADMIN allow nmap to run SYN scans inside the container.
+    # Remove these caps if you only use passive scan mode.
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  spyfly_scans:

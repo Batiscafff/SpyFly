@@ -96,6 +96,85 @@ def create_hash_report(app, results: list[dict], dry_run: bool) -> str:
     return scan_id
 
 
+def start_hash_scan(app, hashes: list[str], dry_run: bool) -> str:
+    """Start async VirusTotal hash lookups. Returns scan_id immediately."""
+    scan_id = str(uuid.uuid4())
+    scan_path = _scan_dir(app, scan_id)
+    now = datetime.utcnow().isoformat()
+
+    status = {
+        "id":             scan_id,
+        "type":           "hash",
+        "status":         "queued",
+        "hash_count":     len(hashes),
+        "dry_run":        dry_run,
+        "started_at":     now,
+        "finished_at":    None,
+        "progress":       0,
+        "current_module": None,
+        "malicious_count":  0,
+        "suspicious_count": 0,
+    }
+    _write_status(scan_path, status)
+
+    t = threading.Thread(target=_run_hash_scan, args=(app, scan_id, scan_path, status, hashes), daemon=True)
+    t.start()
+    return scan_id
+
+
+def _run_hash_scan(app, scan_id: str, scan_path: Path, status: dict, hashes: list[str]):
+    import time as _time
+    import traceback as _tb
+
+    def _algo(h: str) -> str:
+        return {32: "MD5", 40: "SHA-1", 64: "SHA-256"}.get(len(h), "unknown")
+
+    try:
+        _update(scan_path, status, status="running", progress=5, current_module="Hash lookup")
+
+        api_key = app.config.get("VIRUSTOTAL_API_KEY", "")
+        dry_run = status["dry_run"]
+        total = len(hashes)
+        results = []
+
+        from app.modules.passive_osint import lookup_hash_virustotal
+        for i, hash_value in enumerate(hashes):
+            progress = 5 + int((i / total) * 90)
+            _update(scan_path, status, progress=progress,
+                    current_module=f"Checking {hash_value[:12]}… ({i + 1}/{total})")
+
+            result = lookup_hash_virustotal(api_key, hash_value, dry_run)
+            result["hash"] = hash_value
+            result["algo"] = _algo(hash_value)
+            results.append(result)
+
+            # VirusTotal free plan: 4 req/min — wait between requests
+            if not dry_run and i < total - 1:
+                _time.sleep(16)
+
+        malicious_count  = sum(1 for r in results if not r.get("error") and (r.get("malicious") or 0) > 0)
+        suspicious_count = sum(1 for r in results if not r.get("error") and (r.get("malicious") or 0) == 0
+                               and (r.get("suspicious") or 0) > 0)
+
+        _write_results(scan_path, {"type": "hash", "results": results})
+        _update(scan_path, status,
+                status="done", progress=100, current_module=None,
+                malicious_count=malicious_count,
+                suspicious_count=suspicious_count,
+                finished_at=datetime.utcnow().isoformat())
+
+    except Exception as exc:
+        try:
+            _update(scan_path, status, status="error", error=str(exc),
+                    finished_at=datetime.utcnow().isoformat())
+        except Exception:
+            pass
+        try:
+            (scan_path / "error.log").write_text(_tb.format_exc())
+        except Exception:
+            pass
+
+
 def delete_scan(app, scan_id: str):
     import shutil
     scan_path = Path(app.config["SCANS_DIR"]) / scan_id
